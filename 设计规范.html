@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>教师工作台 · 界面设计规范 v2.0「纸墨金」</title>
+<style>
+:root {
+  --ink-900: #1F2733; --ink-600: #5A6472; --ink-400: #8B94A1;
+  --paper: #F7F5F1; --surface: #FFFFFF; --border: #E5E2DC; --border-soft: #EFEBE4;
+  --indigo-600: #2F5D8F; --indigo-700: #27507D; --indigo-50: #E8F0F8;
+  --gold-500: #C77D2E; --gold-700: #97590C; --gold-50: #FBF0E4;
+  --green-600: #2E7D5B; --green-50: #E6F2EC;
+  --red-600: #C2402A; --red-50: #F9E9E6;
+  --radius: 10px; --radius-lg: 14px;
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+  --sans: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); font-size: 14px; color: var(--ink-900); background: var(--paper); line-height: 1.7; }
+.page { max-width: 960px; margin: 0 auto; padding: 40px 32px 80px; }
+h1, h2, h3 { font-family: var(--serif); font-weight: 500; line-height: 1.4; }
+h1 { font-size: 26px; }
+h2 { font-size: 20px; margin-top: 56px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+h3 { font-size: 16px; margin: 26px 0 10px; }
+p { margin: 10px 0; color: var(--ink-600); }
+p strong, li strong { color: var(--ink-900); }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+.meta span { font-size: 12px; padding: 3px 12px; border-radius: 999px; background: var(--indigo-50); color: var(--indigo-600); }
+.meta span.gold { background: var(--gold-50); color: var(--gold-700); }
+.toc { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 18px; }
+.toc a { display: block; padding: 10px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: var(--ink-600); font-size: 13px; }
+.toc a:hover { border-color: var(--indigo-600); color: var(--indigo-600); }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin: 12px 0 4px; font-size: 13px; }
+th { text-align: left; padding: 9px 14px; background: #F1EEE9; color: var(--ink-600); font-weight: 500; font-size: 12px; }
+td { padding: 9px 14px; border-top: 1px solid var(--border-soft); vertical-align: top; }
+td.num { font-family: Consolas, "SF Mono", monospace; font-variant-numeric: tabular-nums; }
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin: 14px 0; }
+.sw { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+.sw .c { height: 52px; }
+.sw .l { padding: 8px 12px; font-size: 12px; }
+.sw .l b { display: block; font-size: 12.5px; color: var(--ink-900); }
+.sw .l span { color: var(--ink-400); font-family: Consolas, monospace; font-size: 11px; }
+.code { background: #F1EEE9; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; font-family: Consolas, "SF Mono", monospace; font-size: 12px; color: #33404F; overflow-x: auto; white-space: pre; line-height: 1.6; margin: 12px 0; }
+.note { background: var(--indigo-50); border: 1px solid #D8E4F0; border-radius: 10px; padding: 10px 16px; font-size: 13px; color: var(--indigo-700); margin: 12px 0; }
+.note.gold { background: var(--gold-50); border-color: #EED9BC; color: var(--gold-700); }
+.demos { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; margin: 12px 0; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border-radius: 8px; border: 1px solid transparent; background: var(--indigo-600); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; line-height: 1.4; white-space: nowrap; }
+.btn:hover { background: var(--indigo-700); }
+.btn-light { background: #fff; color: var(--indigo-600); border-color: #9FB6CE; }
+.btn-light:hover { background: var(--indigo-50); }
+.btn-ghost { background: transparent; color: var(--ink-600); border-color: transparent; }
+.btn-ghost:hover { background: #F1EEE9; color: var(--ink-900); }
+.btn-danger { background: var(--red-600); }
+.btn-danger:hover { background: #A33625; }
+.btn-sm { padding: 4px 12px; font-size: 12px; }
+.badge { display: inline-flex; align-items: center; padding: 2px 10px; font-size: 12px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.badge-blue { background: var(--indigo-50); color: var(--indigo-600); border-color: #D8E4F0; }
+.badge-green { background: var(--green-50); color: var(--green-600); border-color: #BFDCCB; }
+.badge-amber { background: var(--gold-50); color: var(--gold-700); border-color: #EED9BC; }
+.badge-red { background: var(--red-50); color: var(--red-600); border-color: #EFC5BC; }
+.badge-gray { background: #F1F3F5; color: var(--ink-600); border-color: #E1E3E7; }
+.pill { display: inline-flex; align-items: center; gap: 7px; padding: 5px 14px; border-radius: 999px; background: var(--gold-50); border: 1px solid #EED9BC; font-size: 12.5px; color: var(--gold-700); }
+.pill i { width: 6px; height: 6px; border-radius: 50%; background: var(--gold-500); }
+.input { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; font-family: inherit; color: var(--ink-900); background: #fff; outline: none; }
+.input:focus { border-color: var(--indigo-600); box-shadow: 0 0 0 3px rgba(47, 93, 143, .14); }
+.tbl { width: 100%; border-collapse: collapse; font-size: 13px; margin: 0; }
+.tbl th { text-align: left; padding: 9px 12px; color: var(--ink-400); font-weight: 500; font-size: 12px; border-bottom: 1px solid var(--border); background: #FBFAF8; }
+.tbl td { padding: 9px 12px; border-bottom: 1px solid var(--border-soft); }
+.tbl td.num { font-family: Consolas, "SF Mono", monospace; font-variant-numeric: tabular-nums; }
+.tbl td.hl { background: var(--indigo-50); font-weight: 500; }
+.tbl tr.warn td { background: #FBF1EF; }
+.tbl tr.warn td:first-child { box-shadow: inset 3px 0 0 var(--red-600); }
+.tbl tr:hover td { background: #F5F8FB; }
+.tbl tr.warn:hover td { background: #F7E7E3; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.tab { padding: 8px 14px; font-size: 13px; color: var(--ink-600); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tab.active { color: var(--indigo-600); font-weight: 500; border-bottom-color: var(--indigo-600); }
+.empty { text-align: center; padding: 36px 20px; color: var(--ink-400); font-size: 13px; }
+.empty .ring { width: 44px; height: 44px; margin: 0 auto 10px; border: 2px solid var(--border); border-radius: 50%; position: relative; }
+.empty .ring::after { content: ""; position: absolute; left: 50%; top: 50%; width: 14px; height: 2px; background: var(--border); transform: translate(-50%, -50%); }
+.scale { display: flex; align-items: flex-end; gap: 10px; margin: 14px 0; }
+.scale div { text-align: center; font-size: 11px; color: var(--ink-400); }
+.scale b { display: block; background: var(--indigo-50); border: 1px solid #D8E4F0; margin-bottom: 6px; }
+footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12px; color: var(--ink-400); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>教师工作台 · 界面设计规范 v2.0</h1>
+<p style="font-size:15px; margin-top:8px;">设计语言「纸 · 墨 · 金」 —— 暖纸为底，靛墨立骨，赭金点时</p>
+<div class="meta">
+  <span class="gold">状态：待确认</span>
+  <span>设计：UI Designer</span>
+  <span>日期：2026-08-26</span>
+  <span>适用：教师工作台 · 本地网页版</span>
+  <span>合规目标：WCAG 2.1 AA</span>
+</div>
+
+<div class="toc">
+  <a href="#s1">01 设计理念与用户习惯</a>
+  <a href="#s2">02 色彩令牌</a>
+  <a href="#s3">03 字体排印</a>
+  <a href="#s4">04 间距 · 圆角 · 层次</a>
+  <a href="#s5">05 组件规范</a>
+  <a href="#s6">06 页面级规范</a>
+  <a href="#s7">07 可访问性</a>
+  <a href="#s8">08 实施路线</a>
+</div>
+
+<h2 id="s1">01 · 设计理念与用户习惯</h2>
+<p>界面不是给"用户"用的，是给"老师"用的。方案的每一条规则都锚定一个真实工作习惯：</p>
+<table>
+  <tr><th style="width:38%">教师工作习惯</th><th>界面对策</th></tr>
+  <tr><td>一切工作以<b>学期、教学周</b>为节律</td><td>周次胶囊常驻顶栏最左侧（赭金），全站任何页面都能一眼看到"现在是第几周"；日期型信息一律用赭金系强调</td></tr>
+  <tr><td>一天要<b>扫读几千行表格</b>（成绩/考勤/台账）</td><td>表格工程四件套：等宽数字对齐、行高 40px、总评列浅靛底色、预警行红左条 + 浅红底</td></tr>
+  <tr><td><b>录入越快越好</b>（30 秒原则）</td><td>顶栏常驻「＋ 快速录入」主按钮，聚合六类高频录入入口；表单默认值、下拉选择、粘贴导入保持不变</td></tr>
+  <tr><td>打开首页先问<b>"今天该干嘛、谁要盯"</b></td><td>仪表盘 F 型动线：问候语 → 四张统计卡 → 未来 14 天时间轴（左 2/3）→ 今日课表 + 预警栏（右 1/3）</td></tr>
+  <tr><td>期末材料要<b>打印上交</b></td><td>打印样式继承：去侧栏去按钮、白底卡片、表格不跨页断裂</td></tr>
+</table>
+<div class="note gold"><b>颜色的稀缺性原则：</b>全站仅三种颜色有"报警权"——绿（正常完成）、橙（待跟进预警）、红（旷课/不及格/逾期）。上一版导航 6 模块 6 色小方块的做法取消：颜色当模块身份证用，会稀释状态色的报警能力。</div>
+
+<h2 id="s2">02 · 色彩令牌</h2>
+<div class="swatches">
+  <div class="sw"><div class="c" style="background:#2F5D8F"></div><div class="l"><b>靛蓝 600 · 主色</b><span>#2F5D8F</span></div></div>
+  <div class="sw"><div class="c" style="background:#E8F0F8"></div><div class="l"><b>靛蓝 50 · 选中底</b><span>#E8F0F8</span></div></div>
+  <div class="sw"><div class="c" style="background:#C77D2E"></div><div class="l"><b>赭金 500 · 时间</b><span>#C77D2E</span></div></div>
+  <div class="sw"><div class="c" style="background:#FBF0E4"></div><div class="l"><b>赭金 50 · 胶囊底</b><span>#FBF0E4</span></div></div>
+  <div class="sw"><div class="c" style="background:#2E7D5B"></div><div class="l"><b>松绿 600 · 成功</b><span>#2E7D5B</span></div></div>
+  <div class="sw"><div class="c" style="background:#B45309"></div><div class="l"><b>警示 700</b><span>#B45309</span></div></div>
+  <div class="sw"><div class="c" style="background:#C2402A"></div><div class="l"><b>朱红 600 · 危险</b><span>#C2402A</span></div></div>
+  <div class="sw"><div class="c" style="background:#1F2733"></div><div class="l"><b>墨 900 · 正文</b><span>#1F2733</span></div></div>
+  <div class="sw"><div class="c" style="background:#F7F5F1"></div><div class="l"><b>纸底 · 页面背景</b><span>#F7F5F1</span></div></div>
+</div>
+<table>
+  <tr><th>令牌</th><th>值</th><th>用途</th></tr>
+  <tr><td class="num">--ink-900</td><td class="num">#1F2733</td><td>主文本、标题基色</td></tr>
+  <tr><td class="num">--ink-600 / --ink-400</td><td class="num">#5A6472 / #8B94A1</td><td>次级文本 / 弱文本与占位符</td></tr>
+  <tr><td class="num">--paper / --surface</td><td class="num">#F7F5F1 / #FFFFFF</td><td>页面背景 / 卡片面（暖灰纸感，区别于冷灰后台）</td></tr>
+  <tr><td class="num">--indigo-600 / -50</td><td class="num">#2F5D8F / #E8F0F8</td><td>主操作、导航激活、链接 / 选中底、信息提示</td></tr>
+  <tr><td class="num">--gold-500 / -700 / -50</td><td class="num">#C77D2E / #97590C / #FBF0E4</td><td>周次胶囊、截止日期 / 胶囊文字（达标 AA）/ 胶囊底</td></tr>
+  <tr><td class="num">--green-600 / -50</td><td class="num">#2E7D5B / #E6F2EC</td><td>出勤、结题、正常</td></tr>
+  <tr><td class="num">--red-600 / -50</td><td class="num">#C2402A / #F9E9E6</td><td>旷课、不及格、逾期</td></tr>
+  <tr><td class="num">--border / --border-soft</td><td class="num">#E5E2DC / #EFEBE4</td><td>卡片描边 / 表格行分隔</td></tr>
+</table>
+<div class="code">:root {
+  --paper: #F7F5F1;  --surface: #FFFFFF;
+  --indigo-600: #2F5D8F;  --indigo-700: #27507D;  --indigo-50: #E8F0F8;
+  --gold-500: #C77D2E;    --gold-700: #97590C;     --gold-50: #FBF0E4;
+  --green-600: #2E7D5B;   --green-50: #E6F2EC;
+  --red-600: #C2402A;     --red-50: #F9E9E6;
+  --ink-900: #1F2733; --ink-600: #5A6472; --ink-400: #8B94A1;
+  --border: #E5E2DC; --border-soft: #EFEBE4;
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", serif;
+}</div>
+
+<h2 id="s3">03 · 字体排印</h2>
+<table>
+  <tr><th>层级</th><th>规格</th><th>字体</th><th>用途</th></tr>
+  <tr><td>页面标题</td><td class="num">21px / 500</td><td>衬线（思源宋体栈）</td><td>"数据结构 · 成绩册"——每页仅一处，学院气质的锚点</td></tr>
+  <tr><td>卡片标题</td><td class="num">15–16px / 500</td><td>无衬线</td><td>「未来 14 天」「今日课表」</td></tr>
+  <tr><td>正文 / 表格</td><td class="num">13–14px / 400</td><td>无衬线</td><td>行高 1.6；表格行高 40px</td></tr>
+  <tr><td>次级 / 弱</td><td class="num">12px / 400</td><td>无衬线</td><td>说明、占位、统计卡标签</td></tr>
+  <tr><td>数字</td><td class="num">tabular-nums</td><td>Consolas 栈</td><td>学号、成绩、金额——等宽对齐，录入不抖动</td></tr>
+</table>
+<p><b>衬线只用两处：</b>品牌名与页面标题。整站衬线会造成阅读疲劳，一处点睛即可确立气质。</p>
+
+<h2 id="s4">04 · 间距 · 圆角 · 层次</h2>
+<table>
+  <tr><th>体系</th><th>规格</th><th>规则</th></tr>
+  <tr><td>间距基数</td><td class="num">4px</td><td>梯度 4 / 8 / 12 / 16 / 24 / 32 / 48，禁止 18、22 这类"手感值"</td></tr>
+  <tr><td>圆角</td><td class="num">卡片 10px · 输入与按钮 8px · 徽章胶囊 999px</td><td>圆角只此三档，不再新增</td></tr>
+  <tr><td>层次</td><td>纸底 → 卡面 → 悬浮层</td><td>卡片靠 1px 描边 + 极浅阴影（0 1px 3px）分层，纸感优先于立体感；模态才是唯一允许深阴影的层</td></tr>
+</table>
+<div class="scale">
+  <div><b style="height:4px;width:32px"></b>4</div>
+  <div><b style="height:8px;width:32px"></b>8</div>
+  <div><b style="height:12px;width:32px"></b>12</div>
+  <div><b style="height:16px;width:32px"></b>16</div>
+  <div><b style="height:24px;width:32px"></b>24</div>
+  <div><b style="height:32px;width:32px"></b>32</div>
+  <div><b style="height:48px;width:32px"></b>48</div>
+</div>
+
+<h2 id="s5">05 · 组件规范</h2>
+
+<h3>5.1 周次胶囊（新增 · 全站时间坐标）</h3>
+<div class="demos">
+  <div class="row">
+    <span class="pill"><i></i>第 3 教学周 · 秋季学期</span>
+    <span class="pill"><i></i>未设置学期</span>
+  </div>
+</div>
+<p>位置：顶栏最左侧。无学期时同样式但内容提示"未设置学期"。它是全站唯一默认可见的赭金元素——节拍器永远点着灯。</p>
+
+<h3>5.2 按钮</h3>
+<div class="demos">
+  <div class="row">
+    <button class="btn">主按钮 · 保存</button>
+    <button class="btn btn-light">次要 · 权重设置</button>
+    <button class="btn btn-ghost">幽灵 · 取消</button>
+    <button class="btn btn-danger">危险 · 删除</button>
+    <button class="btn" disabled style="opacity:.5">禁用</button>
+    <button class="btn btn-sm">小尺寸</button>
+  </div>
+</div>
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>一屏一个主按钮</td><td>主按钮是当前视窗内最想要的那个动作（保存 / 导出 / 快速录入），其余一律降级</td></tr>
+  <tr><td>危险操作双确认</td><td>删除走模态确认，按钮红色仅出现于确认框与最终操作</td></tr>
+  <tr><td>焦点可见</td><td><code>:focus-visible</code> 时 2px 靛蓝外框 + 2px 偏移，键盘用户不迷路</td></tr>
+</table>
+
+<h3>5.3 状态徽章 · 业务语义映射（全站唯一真源）</h3>
+<div class="demos">
+  <div class="row"><span class="badge badge-green">出 · 出勤</span><span class="badge badge-amber">迟 · 迟到</span><span class="badge badge-red">旷 · 旷课</span><span class="badge badge-gray">假 · 请假</span></div>
+  <div class="row"><span class="badge badge-blue">国家级</span><span class="badge badge-blue">省级</span><span class="badge badge-gray">校级</span></div>
+  <div class="row"><span class="badge badge-green">在研</span><span class="badge badge-gray">结题</span><span class="badge badge-amber">待跟进</span></div>
+  <div class="row"><span class="badge badge-blue">优秀</span><span class="badge badge-green">正常</span><span class="badge badge-red">预警</span><span class="badge badge-gray">缺考</span></div>
+</div>
+<p>竞赛级别只用靛蓝/灰区分，<b>不用金色</b>——金色是时间色，不给状态用。级别含金量靠排序体现，不靠颜色。</p>
+
+<h3>5.4 表格（数据最密集处，四件套）</h3>
+<div class="demos">
+  <table class="tbl">
+    <tr><th>学号</th><th>姓名</th><th style="text-align:center">平时 30%</th><th style="text-align:center">期末 50%</th><th style="text-align:center;background:#E8F0F8">总评</th><th>状态</th></tr>
+    <tr><td class="num">2024001</td><td>张伟</td><td class="num" style="text-align:center">88</td><td class="num" style="text-align:center">82</td><td class="num hl" style="text-align:center">83.2</td><td><span class="badge badge-green">正常</span></td></tr>
+    <tr class="warn"><td class="num">2024002</td><td>王芳</td><td class="num" style="text-align:center">62</td><td class="num" style="text-align:center">41</td><td class="num hl" style="text-align:center;color:#C2402A">49.2</td><td><span class="badge badge-red">预警</span></td></tr>
+    <tr><td class="num">2024006</td><td>赵磊</td><td class="num" style="text-align:center;color:#8B94A1">—</td><td class="num" style="text-align:center;color:#8B94A1">—</td><td class="num hl" style="text-align:center;color:#8B94A1">—</td><td><span class="badge badge-gray">缺考</span></td></tr>
+  </table>
+</div>
+<table>
+  <tr><th>规则</th><th>说明</th></tr>
+  <tr><td>等宽数字</td><td><code>font-variant-numeric: tabular-nums</code>，分数列居中对齐</td></tr>
+  <tr><td>总评列强调</td><td>浅靛底 + 加粗——"这一列是结论"的视觉宣告</td></tr>
+  <tr><td>预警行</td><td>3px 红左条 + #FBF1EF 底 + 红色总评，三重编码（位置/底色/字色）不依赖单一通道</td></tr>
+  <tr><td>行 hover</td><td>浅靛底 #F5F8FB，行高 40px 保证连点录入不误触</td></tr>
+</table>
+
+<h3>5.5 表单与标签页</h3>
+<div class="demos">
+  <div class="row">
+    <input class="input" placeholder="学生姓名 / 学号搜索…" style="width:220px">
+    <input class="input" value="2026-08-26" type="date" style="width:150px">
+    <select class="input"><option>省级</option><option>国家级</option><option>校级</option></select>
+  </div>
+  <div class="tabs" style="margin-top:14px">
+    <div class="tab active">成绩</div><div class="tab">考勤</div><div class="tab">作业实验</div><div class="tab">教学进度</div>
+  </div>
+</div>
+<p>输入聚焦：1px 靛蓝描边 + 3px 光环（rgba 14%）。日期字段一律默认今天，对齐 30 秒录入原则。</p>
+
+<h3>5.6 空状态</h3>
+<div class="demos">
+  <div class="empty">
+    <div class="ring"></div>
+    本学期还没有谈心谈话记录
+    <div style="margin-top:12px"><button class="btn btn-sm">＋ 记一次谈话</button></div>
+  </div>
+</div>
+<p>空状态必须回答两件事：这里放的是什么数据 + 现在就能做什么。图标用几何圆环不用插图，避免跨端违和。</p>
+
+<h2 id="s6">06 · 页面级规范</h2>
+<table>
+  <tr><th>区域</th><th>规格</th><th>要点</th></tr>
+  <tr><td>侧栏</td><td class="num">宽 224px · 白底 · 右侧 1px 描边</td><td>分组（总览/业务/归档/系统）+ 激活项靛蓝胶囊白字；导航图标统一中性空心圆点</td></tr>
+  <tr><td>顶栏</td><td class="num">高 56px · 透明底（纸底透出）</td><td>左：周次胶囊 → 页面标题；右：搜索 → 快速录入主按钮</td></tr>
+  <tr><td>内容区</td><td class="num">内边距 24px · 卡片间距 16px</td><td>卡片栅格 4/3/2 列自适应，断点 980 / 680</td></tr>
+  <tr><td>仪表盘</td><td>上：问候 + 4 统计卡；下：2/3 时间轴 + 1/3 课表与预警</td><td>预警数字为统计卡中唯一允许的红字</td></tr>
+  <tr><td>成绩册</td><td>面包屑 → 衬线页题 → 信息胶囊 → 标签页 → 表格 → 分布与预警双卡</td><td>表格列序固定：标识列 → 过程列 → 结论列（总评）→ 状态列</td></tr>
+</table>
+
+<h2 id="s7">07 · 可访问性（WCAG 2.1 AA）</h2>
+<table>
+  <tr><th>组合</th><th>对比度</th><th>判定</th></tr>
+  <tr><td>墨 #1F2733 / 纸底 #F7F5F1</td><td class="num">≈ 13.9 : 1</td><td>AAA，正文主组合</td></tr>
+  <tr><td>靛蓝 #2F5D8F / 白卡面</td><td class="num">≈ 6.9 : 1</td><td>AA，链接与主按钮文字</td></tr>
+  <tr><td>白字 / 靛蓝底（主按钮）</td><td class="num">≈ 6.9 : 1</td><td>AA</td></tr>
+  <tr><td>赭金深 #97590C / 赭金底 #FBF0E4</td><td class="num">≈ 5.0 : 1</td><td>AA，胶囊文字必须用 700 号深金</td></tr>
+  <tr><td>朱红 #C2402A / 白</td><td class="num">≈ 5.2 : 1</td><td>AA，预警文字</td></tr>
+  <tr><td>松绿 #2E7D5B / 白</td><td class="num">≈ 5.0 : 1</td><td>AA</td></tr>
+</table>
+<div class="note"><b>禁用组合：</b>赭金 500（#C77D2E）直接作小号文字色（对白仅 3.3:1）——它只允许做图形底色与大号数字；弱文本 #8B94A1 仅用于 ≥12px 的辅助信息，不作正文。</div>
+<p>交互附加项：全部按钮/导航/输入可 Tab 触达且焦点可见；预警行三重编码（色之外有位置与文字）服务色弱用户；触控目标 ≥ 40px（表格行高即保证）；动画仅 150–300ms 过渡，不做视差与弹跳。</p>
+
+<h2 id="s8">08 · 实施路线</h2>
+<table>
+  <tr><th>阶段</th><th>内容</th><th>改动面</th></tr>
+  <tr><td><b>v2.0 换肤</b></td><td>全量重写 style.css（令牌 + 上述组件），index.html 增补顶栏结构（周次胶囊 / 快速录入 / 搜索），main.js 顶栏渲染同步——<b>业务 JS 与类名体系零改动</b></td><td>3 个文件</td></tr>
+  <tr><td><b>v2.1 增强包</b></td><td>快速录入六宫格模态（记谈话/登成绩/加学生/报竞赛/记节点/录考勤）；成绩册总评列底色与预警行类名注入 courses.js；仪表盘预警卡</td><td>3–4 个文件</td></tr>
+  <tr><td><b>v2.2 可选</b></td><td>双主题令牌（data-theme="dark"），打印样式精修</td><td>style.css</td></tr>
+</table>
+<h3>验收清单（换肤后逐项过）</h3>
+<table>
+  <tr><th>#</th><th>检查项</th></tr>
+  <tr><td>1</td><td>顶栏周次胶囊在所有页面显示且随学期切换刷新</td></tr>
+  <tr><td>2</td><td>导航无彩色小方块；激活项为靛蓝胶囊</td></tr>
+  <tr><td>3</td><td>成绩册数字列等宽，总分列浅靛底</td></tr>
+  <tr><td>4</td><td>红色仅出现在：旷课、不及格、逾期、删除确认</td></tr>
+  <tr><td>5</td><td>衬线仅出现在品牌与页面标题两处</td></tr>
+  <tr><td>6</td><td>打印预览：无侧栏无按钮，表格不断行</td></tr>
+  <tr><td>7</td><td>键盘 Tab 走一遍全站，焦点环清晰可见</td></tr>
+</table>
+
+<footer>
+  教师工作台 · 界面设计规范 v2.0「纸墨金」 · UI Designer · 2026-08-26 · 本文档自身即按此规范渲染，组件代码可直接移植至 style.css
+</footer>
+
+</div>
+</body>
+</html>
