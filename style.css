@@ -149,6 +149,19 @@ body { font-family: var(--sans); font-size: 14px; color: var(--ink); background:
 .nav-item.active .nav-dot { border-color: var(--on-primary); background: var(--on-primary); }
 .sidebar-foot { padding: 12px; border-top: 1px solid var(--line); }
 
+/* 侧边栏教师信息（学校/学院/教师专业）：位于导航与备份按钮之间 */
+#sidebar-info { padding: 0 14px; }
+.sidebar-info {
+  border: 1px dashed var(--gold-line); border-radius: 10px;
+  padding: 9px 12px 8px; background: var(--surface-2);
+}
+.sidebar-info-title {
+  font-size: 10.5px; color: var(--gold-strong); letter-spacing: .12em;
+  margin-bottom: 5px; padding-bottom: 4px; border-bottom: 1px solid var(--line);
+}
+.sidebar-info-line { font-size: 12.5px; color: var(--ink-2); line-height: 1.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar-info-line:first-of-type { font-weight: 600; color: var(--ink); }
+
 /* ===================== 主区与顶栏 ===================== */
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #topbar {

@@ -52,12 +52,29 @@ function renderTopbar() {
   if (bt) bt.textContent = term ? term.name : "未设置学期";
 }
 
+/* 侧边栏底部教师信息：学校 / 学院 / 教师专业 三行，任一有值才显示 */
+function renderSidebarInfo() {
+  const box = $("#sidebar-info");
+  if (!box) return;
+  const s = DB.settings || {};
+  const lines = [s.school, s.dept, s.major].filter(function (v) { return v && v.trim(); });
+  if (!lines.length) { box.innerHTML = ""; box.style.display = "none"; return; }
+  box.style.display = "";
+  box.innerHTML = '<div class="sidebar-info">' +
+    '<div class="sidebar-info-title">教师信息</div>' +
+    [s.school, s.dept, s.major].map(function (v) {
+      return '<div class="sidebar-info-line">' + esc((v || "").trim() || "—") + "</div>";
+    }).join("") +
+    "</div>";
+}
+
 function renderApp() {
   const view = $("#view");
   const cur = parseHash();
 
   renderNav();
   renderTopbar();
+  renderSidebarInfo();
 
   let bindFn = null;
   if (cur.page === "dashboard") { renderDashboard(view); bindFn = bindDashboard; }

@@ -10,7 +10,7 @@ function uid() {
 function defaultDB() {
   return {
     meta: { version: 1, createdAt: new Date().toISOString() },
-    settings: { teacherName: "", teacherNo: "", dept: "" },
+    settings: { teacherName: "", teacherNo: "", school: "", dept: "", major: "" },
     terms: [],
     students: [],
     courses: [],
@@ -55,6 +55,15 @@ function normalizeCourses() {
   });
 }
 
+/* 教师信息字段迁移：补全新增字段（school / major），确保旧数据结构完整 */
+function normalizeSettings() {
+  const def = defaultDB().settings;
+  if (!DB.settings) DB.settings = {};
+  Object.keys(def).forEach(function (k) {
+    if (DB.settings[k] === undefined || DB.settings[k] === null) DB.settings[k] = "";
+  });
+}
+
 function loadDB() {
   try {
     const raw = localStorage.getItem(DB_KEY);
@@ -64,6 +73,7 @@ function loadDB() {
       for (const k of Object.keys(def)) {
         if (DB[k] === undefined) DB[k] = def[k];
       }
+      normalizeSettings();
       normalizeCourses();
     } else {
       DB = seedDemo();
@@ -343,6 +353,7 @@ function importJSONBackup(file, done) {
       DB = data;
       const def = defaultDB();
       for (const k of Object.keys(def)) if (DB[k] === undefined) DB[k] = def[k];
+      normalizeSettings();
       normalizeCourses();
       saveDB();
       toast("数据已恢复");
@@ -434,7 +445,7 @@ function parsePastedText(text) {
 
 function seedDemo() {
   const db = defaultDB();
-  db.settings = { teacherName: "李明", teacherNo: "20100856", dept: "计算机学院" };
+  db.settings = { teacherName: "李明", teacherNo: "20100856", school: "某某师范大学", dept: "计算机学院", major: "计算机科学与技术" };
 
   const termId = uid();
   db.terms.push({

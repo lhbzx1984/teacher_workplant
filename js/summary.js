@@ -56,8 +56,10 @@ function renderSummary(view) {
     years.map(function (y) { return '<option value="' + y + '"' + (y === selYear ? " selected" : "") + ">" + y + "-" + (y + 1) + " 学年</option>"; }).join("") +
     '</select><button class="btn btn-light" id="sum-print">打印 / 导出 PDF</button></div></div>';
 
+  const idParts = [s.school, s.dept, s.major].filter(function (v) { return v && v.trim(); });
   h += '<div class="info-box">统计范围：<b>' + range.label + '</b>（' + range.start + " 至 " + range.end + "）" +
-    (s.teacherName ? " · " + esc(s.teacherName) + (s.dept ? "（" + esc(s.dept) + "）" : "") : "") + "</div>";
+    (idParts.length ? " · " + esc(idParts.join(" · ")) : "") +
+    (s.teacherName ? " · " + esc(s.teacherName) : "") + "</div>";
 
   h += '<div class="grid grid-4">' +
     statCard("教学工作量", courseHours, "学时", courses.length + " 门课程 · " + Object.keys(studentCount).length + " 名学生") +

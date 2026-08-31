@@ -6,11 +6,15 @@ function renderSettings(view) {
   let h = "";
   h += '<div class="page-head"><div class="page-title">学期与设置<small>学期是全局骨架，所有业务都挂在学年的时间轴上</small></div></div>';
 
-  h += '<div class="card"><div class="card-head"><div class="card-title">教师信息</div></div><div class="card-body">' +
+  h += '<div class="card"><div class="card-head"><div class="card-title">教师信息<small style="font-weight:400;margin-left:6px">学校 · 学院 · 教师专业将显示在左侧边栏</small></div></div><div class="card-body">' +
     '<div class="form-row">' +
     fieldHTML("姓名", '<input class="input" id="set-name" value="' + esc(s.teacherName) + '">') +
     fieldHTML("工号", '<input class="input" id="set-no" value="' + esc(s.teacherNo) + '">') +
-    fieldHTML("所在学院", '<input class="input" id="set-dept" value="' + esc(s.dept) + '">') +
+    "</div>" +
+    '<div class="form-row">' +
+    fieldHTML("学校", '<input class="input" id="set-school" value="' + esc(s.school) + '" placeholder="如：某某师范大学">') +
+    fieldHTML("学院", '<input class="input" id="set-dept" value="' + esc(s.dept) + '" placeholder="如：计算机学院">') +
+    fieldHTML("教师专业", '<input class="input" id="set-major" value="' + esc(s.major) + '" placeholder="如：计算机科学与技术">') +
     "</div>" +
     '<button class="btn" id="set-save">保存</button></div></div>';
 
@@ -150,10 +154,12 @@ function bindSettings(view) {
   $("#set-save", view).addEventListener("click", function () {
     DB.settings.teacherName = $("#set-name", view).value.trim();
     DB.settings.teacherNo = $("#set-no", view).value.trim();
+    DB.settings.school = $("#set-school", view).value.trim();
     DB.settings.dept = $("#set-dept", view).value.trim();
+    DB.settings.major = $("#set-major", view).value.trim();
     saveDB();
     toast("教师信息已保存");
-    renderTopbar();
+    renderApp();
   });
 
   $("#term-add", view).addEventListener("click", function () { termForm(null); });
