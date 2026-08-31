@@ -6,14 +6,19 @@ const STUDENT_TAGS = ["资助", "心理关注", "重点关注", "学业预警"];
 const LOG_TYPES = ["谈话", "走访宿舍", "班会", "活动", "其他"];
 
 function renderStudents(view) {
+  /* 支持 #/students/todos、#/students/logs 等直达子页 */
+  const routeTab = parseHash().id;
+  if (routeTab) studentTab = routeTab;
+
   const tabs = [
     ["pool", "学生档案"],
     ["logs", "工作台账" + countBadge(DB.logs.filter(function (l) { return l.followUp && !l.done; }))],
+    ["todos", "跟踪事项" + countBadge(DB.todos.filter(function (t) { return t.status !== "完成"; }))],
     ["awards", "评奖评优" + countBadge(DB.awards)],
     ["stats", "就业与统计"]
   ];
 
-  let h = '<div class="page-head"><div class="page-title">班主任学生管理<small>学生档案 · 谈心谈话 · 走访台账 · 评奖评优</small></div>' +
+  let h = '<div class="page-head"><div class="page-title">班主任学生管理<small>学生档案 · 谈心谈话 · 跟踪事项 · 走访台账 · 评奖评优</small></div>' +
     '<div class="toolbar"><button class="btn btn-light" id="stu-import">导入学生</button><button class="btn" id="stu-add">新建学生档案</button></div></div>';
   h += '<div class="tabs">' + tabs.map(function (t) {
     return '<div class="tab' + (studentTab === t[0] ? " active" : "") + '" data-stu-tab="' + t[0] + '">' + t[1] + "</div>";
@@ -24,6 +29,7 @@ function renderStudents(view) {
   const body = $("#stu-tab-body", view);
   if (studentTab === "pool") renderStudentPool(body);
   else if (studentTab === "logs") renderLogList(body);
+  else if (studentTab === "todos") renderTodoList(body);
   else if (studentTab === "awards") renderAwardList(body);
   else renderStudentStats(body);
 
@@ -268,11 +274,18 @@ function renderStudentDetail(view, studentId) {
   const logs = DB.logs.filter(function (l) { return (l.studentIds || []).indexOf(s.id) >= 0; });
   const awards = DB.awards.filter(function (a) { return a.studentId === s.id; });
   const compRs = DB.compResults.filter(function (r) { return (r.studentIds || []).indexOf(s.id) >= 0; });
+  const todos = DB.todos.filter(function (t) { return (t.studentIds || []).indexOf(s.id) >= 0; });
 
-  if (!logs.length && !awards.length && !compRs.length) {
-    h += '<div class="empty" style="padding:24px">暂无谈话、走访、获奖记录</div>';
+  if (!logs.length && !awards.length && !compRs.length && !todos.length) {
+    h += '<div class="empty" style="padding:24px">暂无谈话、走访、获奖、跟踪记录</div>';
   } else {
     h += '<div class="card-body"><div class="timeline">';
+    todos.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (t) {
+      h += '<div class="tl-item"><div class="tl-dot" style="border-color:var(--amber-400,#EF9F27)"></div>' +
+        '<div class="tl-date">' + esc(t.date) + " · 跟踪事项</div>" +
+        '<div class="tl-title"><b>' + esc(t.title) + "</b> " +
+        (t.status === "完成" ? badge("完成", "green") : badge("准备", "amber")) + "</div></div>";
+    });
     logs.slice().reverse().forEach(function (l) {
       h += '<div class="tl-item"><div class="tl-dot" style="border-color:var(--blue-400)"></div>' +
         '<div class="tl-date">' + esc(l.date) + " · " + esc(l.type) + "</div>" +
@@ -385,6 +398,122 @@ function logForm(log, presetStudentId) {
       } else {
         DB.logs.push(Object.assign({ id: uid(), done: false }, payload));
         toast("台账已记录");
+      }
+      saveDB();
+      renderApp();
+    }
+  });
+}
+
+/* ---------- 跟踪事项 ---------- */
+
+function renderTodoList(body) {
+  /* 未完成在前（按日期升序），已完成在后（按日期降序） */
+  const pending = DB.todos.filter(function (t) { return t.status !== "完成"; })
+    .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  const done = DB.todos.filter(function (t) { return t.status === "完成"; })
+    .sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  const list = pending.concat(done);
+
+  let h = '<div class="card"><div class="card-head"><div class="card-title">跟踪事项（' + DB.todos.length + " 项，待办 " + pending.length + "）</div>" +
+    '<span class="muted">班会、收缴、材料提交等班级事务 · 自动同步教学日历与仪表盘明日提醒</span>' +
+    '<button class="btn" id="todo-add">新增事项</button></div>';
+
+  if (!list.length) {
+    h += '<div class="empty">还没有跟踪事项——班费收缴、材料提交、活动筹备等需要盯办的事务都可以在这里登记</div>';
+  } else {
+    h += '<table class="tbl"><thead><tr><th style="width:104px">日期</th><th>事项</th><th>涉及学生</th><th style="width:90px">状态</th><th style="width:150px">操作</th></tr></thead><tbody>';
+    list.forEach(function (t) {
+      const names = (t.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
+      const isDone = t.status === "完成";
+      h += '<tr class="' + (isDone ? "muted" : "") + '"><td>' + esc(t.date) +
+        (daysUntil(t.date) === 0 && !isDone ? " <span class='badge badge-red'>今天</span>" : "") +
+        (daysUntil(t.date) === 1 && !isDone ? " <span class='badge badge-amber'>明天</span>" : "") +
+        (daysUntil(t.date) < 0 && !isDone ? " <span class='badge badge-red'>已逾期</span>" : "") +
+        "</td><td><b>" + esc(t.title) + "</b>" +
+        (t.note ? '<div class="muted">' + esc(t.note) + "</div>" : "") + "</td>" +
+        "<td>" + (names ? esc(names) : "-") + "</td>" +
+        "<td>" + (isDone ? badge("完成", "green") : badge("准备", "amber")) + "</td>" +
+        '<td><span class="flex" style="gap:10px">' +
+        (isDone
+          ? '<span class="link" data-todo-reopen="' + t.id + '">恢复</span>'
+          : '<span class="link" data-todo-done="' + t.id + '">完成</span>') +
+        '<span class="link" data-todo-edit="' + t.id + '">编辑</span>' +
+        '<span class="link" data-todo-del="' + t.id + '">删除</span></span></td></tr>';
+    });
+    h += "</tbody></table>";
+  }
+  h += "</div>";
+  body.innerHTML = h;
+
+  $("#todo-add", body).addEventListener("click", function () { todoForm(null); });
+
+  $$("[data-todo-done]", body).forEach(function (el) {
+    el.addEventListener("click", function () { setTodoStatus(el.getAttribute("data-todo-done"), "完成"); });
+  });
+  $$("[data-todo-reopen]", body).forEach(function (el) {
+    el.addEventListener("click", function () { setTodoStatus(el.getAttribute("data-todo-reopen"), "准备"); });
+  });
+  $$("[data-todo-edit]", body).forEach(function (el) {
+    el.addEventListener("click", function () { todoForm(getTodo(el.getAttribute("data-todo-edit"))); });
+  });
+  $$("[data-todo-del]", body).forEach(function (el) {
+    el.addEventListener("click", function () {
+      const t = getTodo(el.getAttribute("data-todo-del"));
+      if (!t) return;
+      confirmModal("确定删除跟踪事项 <b>" + esc(t.title) + "</b>？", function () {
+        DB.todos = DB.todos.filter(function (x) { return x.id !== t.id; });
+        saveDB(); toast("事项已删除"); renderApp();
+      }, "删除");
+    });
+  });
+}
+
+function setTodoStatus(id, status) {
+  const t = getTodo(id);
+  if (!t) return;
+  t.status = status;
+  saveDB();
+  toast(status === "完成" ? "已标记完成，日历将显示为绿色" : "已恢复为待办");
+  renderApp();
+}
+
+function getTodo(id) {
+  return (DB.todos || []).find(function (t) { return t.id === id; }) || null;
+}
+
+function todoForm(todo) {
+  formModal({
+    title: todo ? "编辑跟踪事项" : "新增跟踪事项",
+    body:
+      '<div class="form-row">' +
+      fieldHTML("事项标题", inputHTML("title", todo ? todo.title : "", { placeholder: "如：收缴英语四级报名费" }), true) +
+      fieldHTML("截止日期", inputHTML("date", todo ? todo.date : todayISO(), { type: "date" }), true) +
+      "</div>" +
+      '<div class="form-row">' +
+      fieldHTML("状态", selectHTML("status", todo ? todo.status : "准备", ["准备", "完成"])) +
+      fieldHTML("备注", inputHTML("note", todo ? todo.note : "", { placeholder: "如：每人 30 元，扫码收款后登记" })) +
+      "</div>" +
+      fieldHTML("涉及学生（可多选）", '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">' +
+        (DB.students.length ? DB.students.map(function (s) {
+          return '<label class="flex" style="gap:6px;font-size:13px;margin:0 0 8px 0"><input type="checkbox" name="stu_' + s.id + '"' +
+            ((todo && (todo.studentIds || []).indexOf(s.id) >= 0) ? " checked" : "") + ">" +
+            esc(s.name) + '<span class="muted">' + esc(s.no || "") + "</span></label>";
+        }).join("") : '<span class="hint">学生池为空</span>') + "</div>"),
+    onSubmit: function (data) {
+      if (!data.title.trim()) { toast("请填写事项标题"); return false; }
+      if (!data.date) { toast("请选择截止日期"); return false; }
+      const studentIds = DB.students.filter(function (s) { return data["stu_" + s.id]; }).map(function (s) { return s.id; });
+      const payload = {
+        title: data.title.trim(), date: data.date, status: data.status,
+        note: data.note.trim(), studentIds: studentIds
+      };
+      if (todo) {
+        Object.assign(todo, payload);
+        toast("事项已更新");
+      } else {
+        DB.todos.push(Object.assign({ id: uid() }, payload));
+        toast("事项已登记，将同步到教学日历");
       }
       saveDB();
       renderApp();

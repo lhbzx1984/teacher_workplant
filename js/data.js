@@ -18,6 +18,7 @@ function defaultDB() {
     grades: [],
     assignments: [],
     logs: [],
+    todos: [],
     awards: [],
     competitions: [],
     teams: [],
@@ -227,6 +228,16 @@ function calendarItemsOfDate(dateISO, term) {
       kind: "event", ref: ev, title: ev.title, typeTag: ev.type,
       start: ev.start || "", end: ev.end || "", location: ev.location || "",
       go: "settings"
+    });
+  });
+  /* 班主任跟踪事项：按状态着色（完成=绿 / 未完成=琥珀 / 过期未完成=红），不参与时间三态 */
+  (DB.todos || []).forEach(function (t) {
+    if (t.date !== dateISO) return;
+    const done = t.status === "完成";
+    items.push({
+      kind: "todo", ref: t, title: t.title, typeTag: "跟踪事项",
+      start: "", end: "", go: "students/todos",
+      color: done ? "green" : (dateISO < todayISO() ? "red" : "amber")
     });
   });
   items.sort(function (a, b) { return (parseHM(a.start) || 0) - (parseHM(b.start) || 0); });
@@ -469,6 +480,14 @@ function seedDemo() {
     title: "开学以来状态低迷约谈", content: "针对开学两周三次旷课、作业未交情况进行约谈，学生反映近一个月睡眠不佳。已与家长电话沟通，约定两周后回访。",
     followUp: "10月上旬回访睡眠与出勤情况", done: false
   });
+
+  /* 班主任跟踪事项：status 仅两种——准备 / 完成 */
+  db.todos.push(
+    { id: uid(), title: "收齐班委学期工作计划", date: "2026-08-31", status: "准备", note: "各班委周三前提交至学习委员汇总", studentIds: [ids[0], ids[3]] },
+    { id: uid(), title: "收缴英语四级考试报名费", date: "2026-09-01", status: "准备", note: "每人 30 元，扫码收款后登记", studentIds: [] },
+    { id: uid(), title: "提交贫困生认定申请材料", date: "2026-09-03", status: "准备", note: "含申请书、佐证材料复印件", studentIds: [ids[1]] },
+    { id: uid(), title: "发放军训服装", date: "2026-08-28", status: "完成", note: "按名单发放并签字确认", studentIds: [] }
+  );
 
   const compId1 = uid(), compId2 = uid();
   db.competitions.push({

@@ -22,6 +22,8 @@ function renderDashboard(view) {
     (s.teacherName ? esc(s.teacherName) + " 老师，" : "") + "欢迎回来<small>今天是 " + todayISO() + "（" + weekdayCN() + "）</small>" +
     "</div>" + weekHTML + "</div>";
 
+  h += tomorrowRemindHTML();
+
   h += '<div class="grid grid-4">' +
     statCard("本学期课程", termCourses.length, "门", "共 " + sum(termCourses, function (c) { return Number(c.theoryHours) + Number(c.labHours); }) + " 学时") +
     statCard("学生总数", DB.students.length, "人", "含选课与班级管理") +
@@ -117,13 +119,14 @@ function calDayHTML(dateISO, today, term, monthFirst, monthLast) {
   if (!items.length) h += '<div class="cal-empty">—</div>';
 
   items.forEach(function (it) {
-    const st = timeStatus(dateISO, it.start, it.end);
+    /* 跟踪事项按状态着色（data.js 已算好 color），不参与时间三态；其余按时间状态 */
+    const st = it.kind === "todo" ? "" : timeStatus(dateISO, it.start, it.end);
     const timeTxt = it.start ? it.start : "全天";
     const fullTime = it.start ? (it.start + (it.end ? "-" + it.end : "")) : "全天";
-    const color = it.kind === "course" ? (it.typeTag === "实验" ? "purple" : "blue") : eventTypeColor(it.typeTag);
+    const color = it.color || (it.kind === "course" ? (it.typeTag === "实验" ? "purple" : "blue") : eventTypeColor(it.typeTag));
     const loc = it.location ? " · " + it.location : "";
     const wk = it.weeksText ? " · " + it.weeksText : "";
-    h += '<div class="cal-item tag-' + color + " cal-" + st + '" data-cal-go="' + it.go + '" ' +
+    h += '<div class="cal-item tag-' + color + (st ? " cal-" + st : "") + '" data-cal-go="' + it.go + '" ' +
       'title="' + esc(it.title) + " " + esc(fullTime) + esc(loc) + esc(wk) + '">' +
       '<span class="cal-item-time">' + esc(timeTxt) + "</span>" +
       '<span class="cal-item-title">' + (st === "done" && it.kind === "course" ? "✓ " : "") + esc(it.title) + "</span>" +
@@ -171,6 +174,18 @@ function statCard(label, value, unit, sub) {
   return '<div class="card stat"><div class="stat-label">' + esc(label) + '</div><div class="stat-value">' +
     (value == null ? "-" : value) + '<span class="unit">' + esc(unit || "") + "</span></div>" +
     (sub ? '<div class="stat-sub">' + esc(sub) + "</div>" : "") + "</div>";
+}
+
+/* 明日提醒：明天到期的「准备」状态跟踪事项（提前一天提醒），无则返回空串 */
+function tomorrowRemindHTML() {
+  const tomorrow = addDaysISO(todayISO(), 1);
+  const items = (DB.todos || []).filter(function (t) { return t.status !== "完成" && t.date === tomorrow; });
+  if (!items.length) return "";
+  return '<div class="dash-remind">' +
+    '<b>明日提醒</b>' +
+    '<span>' + esc(tomorrow) + " 有 " + items.length + " 项跟踪事项到期：</span>" +
+    items.map(function (t) { return '<span class="remind-item">' + esc(t.title) + "</span>"; }).join("") +
+    '<span style="flex:1"></span><span class="link" data-go="students/todos">去处理</span></div>';
 }
 
 function todoListHTML() {
@@ -221,6 +236,17 @@ function todoListHTML() {
     });
   });
 
+  DB.todos.forEach(function (t) {
+    if (t.status === "完成") return;
+    const d = daysUntil(t.date);
+    if (d === null || d > 30) return;
+    items.push({
+      date: t.date, color: "amber",
+      text: "【跟踪事项】" + t.title,
+      overdue: d < 0, days: d, go: "students/todos"
+    });
+  });
+
   items.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
 
   if (!items.length) return '<div class="empty" style="padding:26px">未来 30 天没有待办，安心工作</div>';
@@ -228,7 +254,7 @@ function todoListHTML() {
   return '<div class="timeline">' + items.slice(0, 10).map(function (it) {
     return '<div class="tl-item' + (it.overdue ? " overdue" : "") + '">' +
       '<div class="tl-dot" style="border-color:var(--' + it.color + '-400)"></div>' +
-      '<div class="tl-date">' + it.date + (it.overdue ? "（已逾期）" : it.days === 0 ? "（今天）" : "（" + it.days + " 天后）") + "</div>" +
+      '<div class="tl-date">' + it.date + (it.overdue ? "（已逾期）" : it.days === 0 ? "（今天）" : it.days === 1 ? "（明天）" : "（" + it.days + " 天后）") + "</div>" +
       '<div class="tl-title">' + esc(it.text) + ' <span class="link" data-go="' + it.go + '">查看</span></div>' +
       "</div>";
   }).join("") + "</div>";
