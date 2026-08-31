@@ -424,11 +424,10 @@ function renderTodoList(body) {
   const list = pending.concat(done);
 
   let h = '<div class="card"><div class="card-head"><div class="card-title">跟踪事项（' + DB.todos.length + " 项，待办 " + pending.length + "）</div>" +
-    '<span class="muted">班级事务盯办 · 可从工作台账一键转事项 · 自动同步教学日历与仪表盘明日提醒</span>' +
-    '<button class="btn" id="todo-add">新增事项</button></div>';
+    '<span class="muted">跟踪事项内容直接来自工作台账，请在「工作台账」中点击「转跟踪事项」生成</span></div>';
 
   if (!list.length) {
-    h += '<div class="empty">还没有跟踪事项——班费收缴、材料提交、活动筹备等需要盯办的事务都可以在这里登记</div>';
+    h += '<div class="empty">还没有跟踪事项 — 请到「工作台账」中添加台账后点击「转跟踪事项」生成</div>';
   } else {
     h += '<table class="tbl"><thead><tr><th style="width:104px">日期</th><th>事项</th><th>涉及学生</th><th style="width:90px">状态</th><th style="width:150px">操作</th></tr></thead><tbody>';
     list.forEach(function (t) {
@@ -455,8 +454,6 @@ function renderTodoList(body) {
   }
   h += "</div>";
   body.innerHTML = h;
-
-  $("#todo-add", body).addEventListener("click", function () { todoForm(null); });
 
   $$("[data-todo-done]", body).forEach(function (el) {
     el.addEventListener("click", function () { setTodoStatus(el.getAttribute("data-todo-done"), "完成"); });
@@ -492,53 +489,73 @@ function getTodo(id) {
   return (DB.todos || []).find(function (t) { return t.id === id; }) || null;
 }
 
-/* 从台账条目一键转跟踪事项：标题、跟进安排、涉及学生一并带入，并自动关联台账 */
+/* 从台账条目一键转跟踪事项：标题、跟进安排、涉及学生、日期一并带入，并自动关联台账；
+   若该台账已转为跟踪事项，则提示并直接定位到该事项 */
 function todoFromLog(log) {
+  if (!log) return;
+  const existing = (DB.todos || []).find(function (t) { return t.ledgerId === log.id; });
+  if (existing) {
+    toast("该台账已是跟踪事项（" + log.title + "），请直接到「跟踪事项」处理");
+    if (typeof route === "function") route("students/todos");
+    else location.hash = "#/students/todos";
+    return;
+  }
   todoForm(null, {
-    title: log.title, note: log.followUp || "", ledgerId: log.id, studentIds: log.studentIds || []
+    title: log.title, date: log.date, note: log.followUp || "",
+    ledgerId: log.id, studentIds: log.studentIds || []
   });
 }
 
 function todoForm(todo, prefill) {
   const t = todo || prefill || {};
+  const fromLedger = todo && todo.ledgerId;   /* 编辑已有跟踪事项 = 来自台账，字段锁定 */
   const linkedLogs = DB.logs.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+  /* 标题/日期/涉及学生/关联台账 = 来自台账，编辑时锁定不可改；只允许改状态与备注 */
   formModal({
-    title: todo ? "编辑跟踪事项" : "新增跟踪事项",
+    title: fromLedger ? "查看跟踪事项（来自工作台账）" : "新增跟踪事项",
     body:
       '<div class="form-row">' +
-      fieldHTML("事项标题", inputHTML("title", t.title || "", { placeholder: "如：收缴英语四级报名费" }), true) +
-      fieldHTML("截止日期", inputHTML("date", t.date || todayISO(), { type: "date" }), true) +
+      fieldHTML("事项标题", inputHTML("title", t.title || "", { placeholder: "由工作台账带入" }) + (fromLedger ? '<input type="hidden" name="title" value="' + esc(t.title || "") + '">' : ""), true) +
+      fieldHTML("截止日期", inputHTML("date", t.date || todayISO(), { type: "date" }) + (fromLedger ? '<input type="hidden" name="date" value="' + esc(t.date || "") + '">' : ""), true) +
       "</div>" +
       '<div class="form-row">' +
       fieldHTML("状态", selectHTML("status", t.status || "准备", ["准备", "完成"])) +
       fieldHTML("备注", inputHTML("note", t.note || "", { placeholder: "如：每人 30 元，扫码收款后登记" })) +
       "</div>" +
-      fieldHTML("关联台账（可选）", selectHTML("ledgerId", t.ledgerId || "", linkedLogs.map(function (l) {
-        return { value: l.id, text: l.type + " · " + l.date + " " + l.title };
-      }), { allowEmpty: true, emptyText: "不关联，独立登记事项" }) +
-        '<div class="hint" style="margin-top:5px">从工作台账（评奖评优 / 就业 / 贫困生申报等）中选择一条关联，日历将显示台账类型标签</div>') +
-      fieldHTML("涉及学生（可多选）", '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">' +
-        (DB.students.length ? DB.students.map(function (s) {
-          return '<label class="flex" style="gap:6px;font-size:13px;margin:0 0 8px 0"><input type="checkbox" name="stu_' + s.id + '"' +
-            ((t.studentIds || []).indexOf(s.id) >= 0 ? " checked" : "") + ">" +
-            esc(s.name) + '<span class="muted">' + esc(s.no || "") + "</span></label>";
-        }).join("") : '<span class="hint">学生池为空</span>') + "</div>"),
+      fieldHTML("关联台账", (t.ledgerId
+        ? '<div class="form-static">' + esc((function () { const l = getLog(t.ledgerId); return l ? (l.type + " · " + l.date + " " + l.title) : "已删除的台账"; })()) + '<input type="hidden" name="ledgerId" value="' + esc(t.ledgerId) + '"></div>'
+        : selectHTML("ledgerId", "", linkedLogs.map(function (l) {
+            return { value: l.id, text: l.type + " · " + l.date + " " + l.title };
+          }), { allowEmpty: false, emptyText: "请选择台账条目" })
+      ) + (fromLedger
+        ? '<div class="hint" style="margin-top:5px">标题、日期、涉及学生与关联台账由工作台账带入，不可在此修改</div>'
+        : '<div class="hint" style="margin-top:5px">请选择一条工作台账条目作为依据，跟踪事项内容将自动带入</div>')) +
+      fieldHTML("涉及学生", '<div class="form-static">' +
+        (t.studentIds && t.studentIds.length
+          ? esc(t.studentIds.map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、"))
+          : '<span class="muted">未指定</span>') +
+        (t.studentIds && t.studentIds.length
+          ? t.studentIds.map(function (id) { return '<input type="hidden" name="stu_' + id + '" value="1">'; }).join("")
+          : "") + '</div>'),
     onSubmit: function (data) {
-      if (!data.title.trim()) { toast("请填写事项标题"); return false; }
+      if (!data.title || !data.title.trim()) { toast("请填写事项标题"); return false; }
       if (!data.date) { toast("请选择截止日期"); return false; }
-      const studentIds = DB.students.filter(function (s) { return data["stu_" + s.id]; }).map(function (s) { return s.id; });
+      if (!data.ledgerId) { toast("请选择关联台账——跟踪事项必须基于工作台账生成"); return false; }
+      /* 学生 ID：从隐藏字段恢复（锁定时是 hidden，非锁定时是 checkbox，本函数两种都支持） */
+      const studentIds = [];
+      Object.keys(data).forEach(function (k) {
+        if (k.indexOf("stu_") === 0 && data[k]) studentIds.push(k.slice(4));
+      });
       const payload = {
         title: data.title.trim(), date: data.date, status: data.status,
-        note: data.note.trim(), studentIds: studentIds
+        note: data.note.trim(), studentIds: studentIds, ledgerId: data.ledgerId
       };
-      if (data.ledgerId) payload.ledgerId = data.ledgerId;
       if (todo) {
         Object.assign(todo, payload);
-        if (!data.ledgerId) delete todo.ledgerId;
         toast("事项已更新");
       } else {
         DB.todos.push(Object.assign({ id: uid() }, payload));
-        toast("事项已登记，将同步到教学日历");
+        toast("事项已登记，将同步到教学日历（红色）");
       }
       saveDB();
       renderApp();

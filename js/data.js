@@ -240,21 +240,25 @@ function calendarItemsOfDate(dateISO, term) {
       go: "settings"
     });
   });
-  /* 班主任跟踪事项：按状态着色（完成=绿 / 未完成=琥珀 / 过期未完成=红），不参与时间三态；
+  /* 已被跟踪事项关联的台账（按 ledgerId 匹配）：在日历上让位给红色跟踪事项，避免同一天重复显示两条 */
+  const trackedLedgerIds = {};
+  (DB.todos || []).forEach(function (t) { if (t.ledgerId) trackedLedgerIds[t.ledgerId] = true; });
+  /* 班主任跟踪事项：来自工作台账，颜色统一为红色（醒目），不参与时间三态；
      若关联了工作台账条目，类型标签显示台账类型（评奖评优 / 就业 / 贫困生申报…） */
   (DB.todos || []).forEach(function (t) {
     if (t.date !== dateISO) return;
-    const done = t.status === "完成";
     const linked = t.ledgerId ? getLog(t.ledgerId) : null;
     items.push({
       kind: "todo", ref: t, title: t.title, typeTag: linked ? linked.type : "跟踪事项",
       start: "", end: "", go: "students/todos",
-      color: done ? "green" : (dateISO < todayISO() ? "red" : "amber")
+      color: "red"
     });
   });
-  /* 班主任工作台账（评奖评优 / 就业 / 贫困生申报 / 谈话…）：按类型着色，不参与时间三态 */
+  /* 班主任工作台账（评奖评优 / 就业 / 贫困生申报 / 谈话…）：按类型着色，不参与时间三态；
+     已被跟踪事项关联的台账跳过（让位给上面的红色跟踪事项） */
   (DB.logs || []).forEach(function (l) {
     if (l.date !== dateISO) return;
+    if (trackedLedgerIds[l.id]) return;
     items.push({
       kind: "ledger", ref: l, title: l.title, typeTag: l.type,
       start: "", end: "", go: "students/logs",
