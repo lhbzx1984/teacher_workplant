@@ -416,9 +416,12 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .cal-item.cal-ongoing { background: var(--gold-tint); border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold-tint); }
 
 /* —— 授课时段行编辑器 —— */
-.slot-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.slot-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .slot-row select { flex: 0 0 96px; }
-.slot-row input[type="time"] { flex: 1; min-width: 90px; }
+.slot-row select[data-slot-mode] { flex: 0 0 76px; }
+.slot-row input[type="time"] { flex: 1; min-width: 88px; }
+.slot-weeks { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-3); font-size: 12px; }
+.slot-weeks input { width: 56px; text-align: center; padding: 5px 6px; }
 .slot-dash { color: var(--ink-3); }
 @media (max-width: 680px) { .slot-row { flex-wrap: wrap; } }
 

@@ -175,26 +175,49 @@ function courseSlotsOf(course) {
   return (course && Array.isArray(course.slots)) ? course.slots : [];
 }
 
-/* 授课时段可读标签：周一 08:00-09:40（理论） */
-function slotLabel(slot) {
-  const day = Number(slot.day);
-  const dayCN = "一二三四五六日".charAt((day >= 1 && day <= 7 ? day : 1) - 1);
-  return "周" + dayCN + " " + (slot.start || "?") + (slot.end ? "-" + slot.end : "") + "（" + (slot.type || "理论") + "）";
+/* 时段周数可读文本："1-16周·双周"。旧数据无周数字段时默认整学期每周 */
+function slotWeeksText(slot, term) {
+  const maxWeek = Number(term && term.weeks) || 20;
+  const ws = Math.max(1, Number(slot.weekStart) || 1);
+  const we = Math.min(maxWeek, Number(slot.weekEnd) || maxWeek);
+  const mode = slot.weekMode || "all";
+  return ws + "-" + we + "周" + (mode === "odd" ? "·单周" : mode === "even" ? "·双周" : "");
 }
 
-/* 某一天的日历条目：当前学期课程时段（按周几匹配，仅在教学周内显示）+ 特殊日程，按开始时间排序 */
+/* 某教学周该时段是否上课：周范围 + 单双周（weekNo 为 null 视为学期外） */
+function slotCoversWeek(slot, weekNo, term) {
+  if (weekNo == null) return false;
+  const maxWeek = Number(term && term.weeks) || 20;
+  const ws = Math.max(1, Number(slot.weekStart) || 1);
+  const we = Math.min(maxWeek, Number(slot.weekEnd) || maxWeek);
+  if (weekNo < ws || weekNo > we) return false;
+  const mode = slot.weekMode || "all";
+  if (mode === "odd" && weekNo % 2 === 0) return false;
+  if (mode === "even" && weekNo % 2 === 1) return false;
+  return true;
+}
+
+/* 授课时段可读标签：周一 08:00-09:40（理论·1-18周） */
+function slotLabel(slot, term) {
+  const day = Number(slot.day);
+  const dayCN = "一二三四五六日".charAt((day >= 1 && day <= 7 ? day : 1) - 1);
+  return "周" + dayCN + " " + (slot.start || "?") + (slot.end ? "-" + slot.end : "") +
+    "（" + (slot.type || "理论") + "·" + slotWeeksText(slot, term) + "）";
+}
+
+/* 某一天的日历条目：当前学期课程时段（按周几 + 教学周范围 + 单双周匹配）+ 特殊日程，按开始时间排序 */
 function calendarItemsOfDate(dateISO, term) {
   const items = [];
   const wd = isoWeekday(dateISO);
-  const inTerm = term ? weekNoOfTerm(term, dateISO) != null : true;
+  const weekNo = term ? weekNoOfTerm(term, dateISO) : null;
   (DB.courses || []).forEach(function (c) {
     if (term && c.termId !== term.id) return;
-    if (!inTerm) return;  // 学期外（含开学前/结课后）不显示任何课程时段
     courseSlotsOf(c).forEach(function (s) {
       if (Number(s.day) !== wd) return;
+      if (term && !slotCoversWeek(s, weekNo, term)) return;  // 学期外 / 周范围外 / 单双周不匹配
       items.push({
         kind: "course", ref: c, title: c.name, typeTag: s.type || "理论",
-        start: s.start || "", end: s.end || "", go: "course/" + c.id
+        start: s.start || "", end: s.end || "", weeksText: slotWeeksText(s, term), go: "course/" + c.id
       });
     });
   });
@@ -408,9 +431,9 @@ function seedDemo() {
     weights: { regular: 30, midterm: 20, final: 50 },
     roster: ids.slice(), progress: "",
     slots: [
-      { type: "理论", day: 1, start: "08:00", end: "09:40" },
-      { type: "实验", day: 3, start: "10:00", end: "11:40" },
-      { type: "理论", day: 5, start: "14:00", end: "15:40" }
+      { type: "理论", day: 1, start: "08:00", end: "09:40", weekStart: 1, weekEnd: 18, weekMode: "all" },
+      { type: "实验", day: 3, start: "10:00", end: "11:40", weekStart: 1, weekEnd: 16, weekMode: "even" },
+      { type: "理论", day: 5, start: "14:00", end: "15:40", weekStart: 1, weekEnd: 18, weekMode: "all" }
     ]
   });
 

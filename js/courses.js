@@ -77,7 +77,7 @@ function courseForm(course) {
       if (!data.termId) { toast("请选择开课学期"); return false; }
       const w1 = Number(data.w1) || 0, w2 = Number(data.w2) || 0, w3 = Number(data.w3) || 0;
       if (w1 + w2 + w3 !== 100) { toast("三项成绩权重之和必须等于 100"); return false; }
-      const newSlots = readSlotRows(overlay);
+      const newSlots = readSlotRows(overlay, term);
       for (let i = 0; i < newSlots.length; i++) {
         if (newSlots[i].start && newSlots[i].end && newSlots[i].end < newSlots[i].start) {
           toast("第 " + (i + 1) + " 个时段的结束时间不能早于开始时间");
@@ -105,32 +105,39 @@ function courseForm(course) {
 
   /* —— 授课时段行编辑器（无 name 属性，避免混入表单数据） —— */
   const rowsBox = $("#slot-rows", overlay);
+  const maxWeek = Number(term && term.weeks) || 20;
+  const newSlot = function () { return { type: "理论", day: 1, start: "08:00", end: "09:40", weekStart: 1, weekEnd: maxWeek, weekMode: "all" }; };
   let slotList = course ? JSON.parse(JSON.stringify(courseSlotsOf(course))) : [];
-  if (!slotList.length) slotList = [{ type: "理论", day: 1, start: "08:00", end: "09:40" }];
+  if (!slotList.length) slotList = [newSlot()];
 
   function renderSlotRows() {
-    rowsBox.innerHTML = slotList.map(slotRowHTML).join("") ||
+    rowsBox.innerHTML = slotList.map(function (s) { return slotRowHTML(s, term); }).join("") ||
       '<div class="hint" style="margin-bottom:8px">尚未设置授课时段，课程不会出现在教学日历中</div>';
   }
   renderSlotRows();
 
   $("#slot-add", overlay).addEventListener("click", function () {
-    slotList = readSlotRows(overlay);
-    slotList.push({ type: "理论", day: 1, start: "08:00", end: "09:40" });
+    slotList = readSlotRows(overlay, term);
+    slotList.push(newSlot());
     renderSlotRows();
   });
   rowsBox.addEventListener("click", function (e) {
     const del = e.target.closest("[data-slot-del]");
     if (!del) return;
-    slotList = readSlotRows(overlay);
+    slotList = readSlotRows(overlay, term);
     slotList.splice(Array.prototype.indexOf.call(rowsBox.querySelectorAll(".slot-row"), del.closest(".slot-row")), 1);
     renderSlotRows();
   });
 }
 
-function slotRowHTML(slot) {
+function slotRowHTML(slot, term) {
   slot = slot || {};
+  const term0 = term || currentTerm();
+  const maxWeek = Number(term0 && term0.weeks) || 20;
   const day = Number(slot.day) >= 1 && Number(slot.day) <= 7 ? Number(slot.day) : 1;
+  const ws = Math.max(1, Math.min(maxWeek, Number(slot.weekStart) || 1));
+  const we = Math.max(ws, Math.min(maxWeek, Number(slot.weekEnd) || maxWeek));
+  const mode = slot.weekMode || "all";
   return '<div class="slot-row">' +
     '<select class="input" data-slot-type>' +
     ["理论", "实验"].map(function (t) { return '<option' + ((slot.type || "理论") === t ? " selected" : "") + ">" + t + "</option>"; }).join("") +
@@ -141,21 +148,33 @@ function slotRowHTML(slot) {
     '<input type="time" class="input" data-slot-start value="' + esc(slot.start || "") + '">' +
     '<span class="slot-dash">–</span>' +
     '<input type="time" class="input" data-slot-end value="' + esc(slot.end || "") + '">' +
+    '<span class="slot-weeks" title="该时段上课的教学周范围">第' +
+    '<input type="number" class="input" data-slot-ws value="' + ws + '" min="1" max="' + maxWeek + '">–' +
+    '<input type="number" class="input" data-slot-we value="' + we + '" min="1" max="' + maxWeek + '">周</span>' +
+    '<select class="input" data-slot-mode>' +
+    [["all", "每周"], ["odd", "单周"], ["even", "双周"]].map(function (m) { return '<option value="' + m[0] + '"' + (mode === m[0] ? " selected" : "") + ">" + m[1] + "</option>"; }).join("") +
+    "</select>" +
     '<button type="button" class="btn btn-light btn-sm" data-slot-del>删除</button>' +
     "</div>";
 }
 
-/* 从弹窗 DOM 读取全部时段行；起止时间均为空的行视为未填写、自动忽略 */
-function readSlotRows(overlay) {
+/* 从弹窗 DOM 读取全部时段行；起止时间均为空的行视为未填写、自动忽略。
+   周数容错：起始周下限 1；结束周为空或越界取学期周数；结束早于起始时取起始周 */
+function readSlotRows(overlay, term) {
+  const maxWeek = Number(term && term.weeks) || 20;
   const rows = [];
   $$(".slot-row", overlay).forEach(function (row) {
     const start = $("[data-slot-start]", row).value;
     const end = $("[data-slot-end]", row).value;
     if (!start && !end) return;
+    let ws = Math.max(1, Math.min(maxWeek, Number($("[data-slot-ws]", row).value) || 1));
+    let we = Number($("[data-slot-we]", row).value) || maxWeek;
+    we = Math.max(ws, Math.min(maxWeek, we));
     rows.push({
       type: $("[data-slot-type]", row).value,
       day: Number($("[data-slot-day]", row).value),
-      start: start, end: end
+      start: start, end: end,
+      weekStart: ws, weekEnd: we, weekMode: $("[data-slot-mode]", row).value
     });
   });
   return rows;
@@ -223,7 +242,7 @@ function renderCourseDetail(view, courseId) {
   if (slots.length) {
     h += '<div class="card" style="padding:10px 18px"><div class="flex">' +
       '<span class="muted" style="flex:0 0 auto">授课时段</span>' +
-      slots.map(function (s) { return badge(slotLabel(s), s.type === "实验" ? "purple" : "blue"); }).join("") +
+      slots.map(function (s) { return badge(slotLabel(s, term), s.type === "实验" ? "purple" : "blue"); }).join("") +
       '<span class="muted" style="flex:0 0 auto">同步显示在仪表盘教学日历</span></div></div>';
   }
 

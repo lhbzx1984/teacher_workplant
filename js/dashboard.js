@@ -122,8 +122,9 @@ function calDayHTML(dateISO, today, term, monthFirst, monthLast) {
     const fullTime = it.start ? (it.start + (it.end ? "-" + it.end : "")) : "全天";
     const color = it.kind === "course" ? (it.typeTag === "实验" ? "purple" : "blue") : eventTypeColor(it.typeTag);
     const loc = it.location ? " · " + it.location : "";
+    const wk = it.weeksText ? " · " + it.weeksText : "";
     h += '<div class="cal-item tag-' + color + " cal-" + st + '" data-cal-go="' + it.go + '" ' +
-      'title="' + esc(it.title) + " " + esc(fullTime) + esc(loc) + '">' +
+      'title="' + esc(it.title) + " " + esc(fullTime) + esc(loc) + esc(wk) + '">' +
       '<span class="cal-item-time">' + esc(timeTxt) + "</span>" +
       '<span class="cal-item-title">' + (st === "done" && it.kind === "course" ? "✓ " : "") + esc(it.title) + "</span>" +
       '<i class="cal-tag">' + esc(it.typeTag) + "</i>" +
