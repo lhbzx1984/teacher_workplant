@@ -1,5 +1,9 @@
 "use strict";
 
+/* 教学日历状态：月偏移量（0=本月）与实时刷新定时器 */
+let calOffset = 0;
+let calTimer = null;
+
 function renderDashboard(view) {
   const term = currentTerm();
   const week = termWeekNow(term);
@@ -25,6 +29,10 @@ function renderDashboard(view) {
     statCard("竞赛获奖", totalAwards, "项", "历年累计指导成果") +
     "</div>";
 
+  h += '<div class="card cal-card"><div class="card-head"><div class="card-title">教学日历' +
+    '<small style="font-weight:400;margin-left:6px">月视图 · 课程时段与特殊日程 · 已上 / 进行中 / 未上状态随时间自动刷新</small></div></div>' +
+    '<div id="cal-box">' + calendarMonthHTML() + "</div></div>";
+
   h += '<div class="grid grid-2" style="margin-top:14px">';
   h += '<div class="card"><div class="card-head"><div class="card-title">近期待办</div><span class="muted">未来 30 天</span></div><div class="card-body" id="dash-todos">' + todoListHTML() + "</div></div>";
   h += '<div class="card"><div class="card-head"><div class="card-title">本学期课程</div>' +
@@ -35,6 +43,123 @@ function renderDashboard(view) {
   h += '<div class="card"><div class="card-head"><div class="card-title">待跟进台账</div><span class="muted">班主任工作 · 谈话 / 走访后续</span></div>' + followUpListHTML() + "</div>";
 
   view.innerHTML = h;
+}
+
+/* ===================== 教学日历（月视图） ===================== */
+
+function calendarMonthHTML() {
+  const term = currentTerm();
+  const today = todayISO();
+
+  /* 当前显示月份的第一天（含月偏移） */
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + calOffset, 1);
+  const y = first.getFullYear(), m = first.getMonth();
+  const pad = function (n) { return String(n).padStart(2, "0"); };
+  const firstISO = y + "-" + pad(m + 1) + "-01";
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const lastISO = y + "-" + pad(m + 1) + "-" + pad(daysInMonth);
+
+  /* 月网格从首日所在周的周一开始，行数按月长短自适应（5~6 行） */
+  const startISO = mondayOfISO(firstISO);
+  const weeks = Math.ceil((isoWeekday(firstISO) - 1 + daysInMonth) / 7);
+  const days = [];
+  for (let i = 0; i < weeks * 7; i++) days.push(addDaysISO(startISO, i));
+
+  /* 网格覆盖到的教学周范围（只统计在教学周内的日期） */
+  let wMin = null, wMax = null;
+  days.forEach(function (d) {
+    const w = term ? weekNoOfTerm(term, d) : null;
+    if (w != null) {
+      if (wMin == null || w < wMin) wMin = w;
+      if (wMax == null || w > wMax) wMax = w;
+    }
+  });
+  const weekLabel = wMin == null ? "不在教学周内" : "第 " + wMin + (wMax !== wMin ? " – " + wMax : "") + " 教学周";
+
+  let h = '<div class="cal-toolbar">' +
+    '<div class="cal-nav">' +
+    '<button class="btn btn-light btn-sm" data-cal-prev title="上一月">‹</button>' +
+    '<button class="btn btn-light btn-sm" data-cal-now>本月</button>' +
+    '<button class="btn btn-light btn-sm" data-cal-next title="下一月">›</button></div>' +
+    '<div class="cal-week-label">' + (term ? esc(term.name) + " · " : "") + y + " 年 " + (m + 1) + " 月" +
+    '<span class="muted">' + weekLabel + " · " + days[0] + " ~ " + days[days.length - 1] + "</span></div>" +
+    '<div class="cal-legend">' +
+    '<span class="cal-lg cal-lg-done"><i></i>已上 / 已结束</span>' +
+    '<span class="cal-lg cal-lg-ongoing"><i></i>进行中</span>' +
+    '<span class="cal-lg cal-lg-todo"><i></i>未上 / 未开始</span>' +
+    "</div></div>";
+
+  h += '<div class="cal-grid cal-grid-month">';
+  "一二三四五六日".split("").forEach(function (w) { h += '<div class="cal-dow">周' + w + "</div>"; });
+  days.forEach(function (d) { h += calDayHTML(d, today, term, firstISO, lastISO); });
+  h += "</div>";
+  return h;
+}
+
+function calDayHTML(dateISO, today, term, monthFirst, monthLast) {
+  const d = parseISO(dateISO);
+  if (!d) return "";
+  const wd = isoWeekday(dateISO);
+  const items = calendarItemsOfDate(dateISO, term);
+  const isToday = dateISO === today;
+  const inMonth = dateISO >= monthFirst && dateISO <= monthLast;
+  const inTerm = term ? weekNoOfTerm(term, dateISO) != null : false;
+  const weekNo = term ? weekNoOfTerm(term, dateISO) : null;
+
+  let head = '<div class="cal-day-head"><span class="cal-day-num">' + d.getDate() + "</span>";
+  if (wd === 1 && weekNo != null) head += '<span class="cal-weekno">第 ' + weekNo + " 周</span>";
+  if (isToday) head += '<span class="cal-today-tag">今天</span>';
+  head += "</div>";
+
+  let h = '<div class="cal-day' + (inMonth ? "" : " cal-dim") + (isToday ? " cal-today" : "") + (inTerm ? "" : " cal-out") + '">' + head;
+
+  if (!items.length) h += '<div class="cal-empty">—</div>';
+
+  items.forEach(function (it) {
+    const st = timeStatus(dateISO, it.start, it.end);
+    const timeTxt = it.start ? it.start : "全天";
+    const fullTime = it.start ? (it.start + (it.end ? "-" + it.end : "")) : "全天";
+    const color = it.kind === "course" ? (it.typeTag === "实验" ? "purple" : "blue") : eventTypeColor(it.typeTag);
+    const loc = it.location ? " · " + it.location : "";
+    h += '<div class="cal-item tag-' + color + " cal-" + st + '" data-cal-go="' + it.go + '" ' +
+      'title="' + esc(it.title) + " " + esc(fullTime) + esc(loc) + '">' +
+      '<span class="cal-item-time">' + esc(timeTxt) + "</span>" +
+      '<span class="cal-item-title">' + (st === "done" && it.kind === "course" ? "✓ " : "") + esc(it.title) + "</span>" +
+      '<i class="cal-tag">' + esc(it.typeTag) + "</i>" +
+      (st === "ongoing" ? '<span class="cal-live">进行中</span>' : "") +
+      "</div>";
+  });
+
+  return h + "</div>";
+}
+
+/* 定时刷新：每 30 秒重算状态（已上 / 进行中 / 未上），离开仪表盘自动停止 */
+function bindCalendar(view) {
+  const box = $("#cal-box", view);
+  if (!box) return;
+
+  function refreshCal() {
+    const live = document.getElementById("cal-box");
+    if (!live) {
+      if (calTimer) { clearInterval(calTimer); calTimer = null; }
+      return;
+    }
+    live.innerHTML = calendarMonthHTML();
+  }
+
+  box.addEventListener("click", function (e) {
+    if (e.target.closest("[data-cal-prev]")) { calOffset--; refreshCal(); }
+    else if (e.target.closest("[data-cal-next]")) { calOffset++; refreshCal(); }
+    else if (e.target.closest("[data-cal-now]")) { calOffset = 0; refreshCal(); }
+    else {
+      const it = e.target.closest("[data-cal-go]");
+      if (it) go(it.getAttribute("data-cal-go"));
+    }
+  });
+
+  if (calTimer) clearInterval(calTimer);
+  calTimer = setInterval(refreshCal, 30000);
 }
 
 function weekdayCN() {
@@ -85,6 +210,16 @@ function todoListHTML() {
     });
   });
 
+  DB.events.forEach(function (ev) {
+    const d = daysUntil(ev.date);
+    if (d === null || d < 0 || d > 30) return;
+    items.push({
+      date: ev.date, color: eventTypeColor(ev.type),
+      text: "【" + ev.type + "】" + ev.title,
+      overdue: false, days: d, go: "settings"
+    });
+  });
+
   items.sort(function (a, b) { return a.date < b.date ? -1 : 1; });
 
   if (!items.length) return '<div class="empty" style="padding:26px">未来 30 天没有待办，安心工作</div>';
@@ -123,6 +258,7 @@ function courseMiniTable(courses) {
 }
 
 function bindDashboard(view) {
+  bindCalendar(view);
   $$("[data-log-done]", view).forEach(function (el) {
     el.addEventListener("click", function () {
       const log = DB.logs.find(function (l) { return l.id === el.getAttribute("data-log-done"); });

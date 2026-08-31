@@ -24,8 +24,24 @@ function defaultDB() {
     compResults: [],
     projects: [],
     outputs: [],
-    expenses: []
+    expenses: [],
+    events: []
   };
+}
+
+/* 课程考核方式选项 */
+const EXAM_TYPES = ["闭卷考试", "开卷考试", "考查", "论文/报告", "机试", "其他"];
+
+function examTypeOf(course) {
+  return (course && course.examType) || "闭卷考试";
+}
+
+/* 旧数据迁移：补齐课程缺失字段（slots / examType） */
+function normalizeCourses() {
+  (DB.courses || []).forEach(function (c) {
+    if (!c.slots) c.slots = [];
+    if (!c.examType) c.examType = "闭卷考试";
+  });
 }
 
 function loadDB() {
@@ -37,6 +53,7 @@ function loadDB() {
       for (const k of Object.keys(def)) {
         if (DB[k] === undefined) DB[k] = def[k];
       }
+      normalizeCourses();
     } else {
       DB = seedDemo();
       saveDB();
@@ -108,6 +125,100 @@ function termWeekNow(term) {
   return weekNoOfTerm(term || currentTerm(), todayISO());
 }
 
+/* ===================== 教学日历 ===================== */
+
+/* ISO 星期：1=周一 … 7=周日 */
+function isoWeekday(dateISO) {
+  const d = parseISO(dateISO);
+  if (!d) return null;
+  return d.getDay() === 0 ? 7 : d.getDay();
+}
+
+function addDaysISO(dateISO, n) {
+  const d = parseISO(dateISO);
+  if (!d) return null;
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+/* 所在周的周一 */
+function mondayOfISO(dateISO) {
+  const wd = isoWeekday(dateISO);
+  if (wd == null) return null;
+  return addDaysISO(dateISO, 1 - wd);
+}
+
+/* "HH:MM" → 当日分钟数，非法返回 null */
+function parseHM(t) {
+  const p = String(t || "").trim().split(":");
+  if (p.length !== 2) return null;
+  const h = Number(p[0]), m = Number(p[1]);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  return h * 60 + m;
+}
+
+/* 时间状态："done"=已结束/已上，"ongoing"=进行中，"todo"=未开始/未上 */
+function timeStatus(dateISO, start, end) {
+  if (!dateISO) return "todo";
+  const today = todayISO();
+  if (dateISO < today) return "done";
+  if (dateISO > today) return "todo";
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const s = parseHM(start), e = parseHM(end);
+  if (s != null && nowMin < s) return "todo";
+  if (e != null && nowMin > e) return "done";
+  return "ongoing";
+}
+
+function courseSlotsOf(course) {
+  return (course && Array.isArray(course.slots)) ? course.slots : [];
+}
+
+/* 授课时段可读标签：周一 08:00-09:40（理论） */
+function slotLabel(slot) {
+  const day = Number(slot.day);
+  const dayCN = "一二三四五六日".charAt((day >= 1 && day <= 7 ? day : 1) - 1);
+  return "周" + dayCN + " " + (slot.start || "?") + (slot.end ? "-" + slot.end : "") + "（" + (slot.type || "理论") + "）";
+}
+
+/* 某一天的日历条目：当前学期课程时段（按周几匹配）+ 特殊日程，按开始时间排序 */
+function calendarItemsOfDate(dateISO, term) {
+  const items = [];
+  const wd = isoWeekday(dateISO);
+  (DB.courses || []).forEach(function (c) {
+    if (term && c.termId !== term.id) return;
+    courseSlotsOf(c).forEach(function (s) {
+      if (Number(s.day) !== wd) return;
+      items.push({
+        kind: "course", ref: c, title: c.name, typeTag: s.type || "理论",
+        start: s.start || "", end: s.end || "", go: "course/" + c.id
+      });
+    });
+  });
+  (DB.events || []).forEach(function (ev) {
+    if (ev.date !== dateISO) return;
+    items.push({
+      kind: "event", ref: ev, title: ev.title, typeTag: ev.type,
+      start: ev.start || "", end: ev.end || "", location: ev.location || "",
+      go: "settings"
+    });
+  });
+  items.sort(function (a, b) { return (parseHM(a.start) || 0) - (parseHM(b.start) || 0); });
+  return items;
+}
+
+const EVENT_TYPES = ["监考", "毕业答辩", "课程答辩", "特殊事件"];
+const EVENT_TYPE_COLOR = { "监考": "amber", "毕业答辩": "purple", "课程答辩": "blue", "特殊事件": "red" };
+
+function eventTypeColor(type) {
+  return EVENT_TYPE_COLOR[type] || "gray";
+}
+
+function getEvent(id) {
+  return (DB.events || []).find(function (e) { return e.id === id; }) || null;
+}
+
 /* ===================== 查询助手 ===================== */
 
 function getStudent(id) { return DB.students.find(function (s) { return s.id === id; }) || null; }
@@ -165,11 +276,12 @@ function importJSONBackup(file, done) {
   reader.onload = function () {
     try {
       const data = JSON.parse(reader.result);
-      if (!data.settings || !Array.isArray(data.students) === false && !data.settings) throw new Error("格式不符");
+      if (!data.settings) throw new Error("格式不符");
       if (!data.meta || !data.terms) throw new Error("这不是工作台备份文件");
       DB = data;
       const def = defaultDB();
       for (const k of Object.keys(def)) if (DB[k] === undefined) DB[k] = def[k];
+      normalizeCourses();
       saveDB();
       toast("数据已恢复");
       done && done();
@@ -290,9 +402,23 @@ function seedDemo() {
   db.courses.push({
     id: courseId, termId: termId, no: "CS2103", name: "数据结构", nature: "必修",
     credits: 3.5, theoryHours: 48, labHours: 16, className: "计科2301",
+    examType: "闭卷考试",
     weights: { regular: 30, midterm: 20, final: 50 },
-    roster: ids.slice(), progress: ""
+    roster: ids.slice(), progress: "",
+    slots: [
+      { type: "理论", day: 1, start: "08:00", end: "09:40" },
+      { type: "实验", day: 3, start: "10:00", end: "11:40" },
+      { type: "理论", day: 5, start: "14:00", end: "15:40" }
+    ]
   });
+
+  db.events.push(
+    { id: uid(), type: "特殊事件", title: "学院教学委员会例会", date: "2026-09-03", start: "16:00", end: "17:30", location: "行政楼302", courseId: "", note: "讨论本学期教学检查安排" },
+    { id: uid(), type: "监考", title: "全国计算机等级考试监考", date: "2026-09-12", start: "09:00", end: "11:30", location: "教学楼B201", courseId: "", note: "提前 30 分钟到考务办领卷" },
+    { id: uid(), type: "课程答辩", title: "数据结构课程设计答辩", date: "2026-09-25", start: "14:00", end: "17:30", location: "实验楼508", courseId: courseId, note: "6 名学生分两组答辩" },
+    { id: uid(), type: "特殊事件", title: "国庆节放假", date: "2026-10-01", start: "", end: "", location: "", courseId: "", note: "10月1日至8日" },
+    { id: uid(), type: "毕业答辩", title: "2027届毕业设计（论文）中期答辩", date: "2026-11-21", start: "08:30", end: "12:00", location: "实验楼405", courseId: "", note: "答辩小组 5 人，需提前提交评审表" }
+  );
 
   ids.forEach(function (sid, i) {
     db.grades.push({

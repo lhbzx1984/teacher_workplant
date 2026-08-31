@@ -19,6 +19,11 @@ function renderSettings(view) {
     (DB.terms.length ? termsTableHTML() : '<div class="empty">还没有学期，点击“新增学期”开始</div>') +
     '<div class="card-body hint">提示：开始日期填开学第一周的<b>周一</b>，系统将据此自动计算当前教学周；同一时间只能有一个“当前学期”。</div></div>';
 
+  h += '<div class="card"><div class="card-head"><div class="card-title">特殊日程<small style="font-weight:400;margin-left:6px">监考 · 毕业答辩 · 课程答辩 · 特殊事件，自动同步到仪表盘教学日历</small></div>' +
+    '<button class="btn" id="event-add">新增日程</button></div>' +
+    (DB.events.length ? eventsTableHTML() : '<div class="empty">还没有特殊日程，监考、答辩、例会、假期等均可在此登记</div>') +
+    "</div>";
+
   h += '<div class="card"><div class="card-head"><div class="card-title">数据管理</div></div><div class="card-body">' +
     '<div class="info-box">数据保存在本浏览器的本地存储中，仅限本机访问。建议每学期初、期末各导出一次备份文件。</div>' +
     '<div class="flex">' +
@@ -75,6 +80,72 @@ function termForm(term) {
   });
 }
 
+/* ===================== 特殊日程 ===================== */
+
+function eventStatusBadge(ev) {
+  const st = timeStatus(ev.date, ev.start, ev.end);
+  if (st === "done") return '<span class="muted">已结束</span>';
+  if (st === "ongoing") return badge("进行中", "amber");
+  return daysUntil(ev.date) === 0 ? badge("今天", "red") : badge("未开始", "blue");
+}
+
+function eventsTableHTML() {
+  return '<table class="tbl"><thead><tr><th>类型</th><th>标题</th><th>日期</th><th>时间</th><th>地点</th><th>状态</th><th style="width:110px">操作</th></tr></thead><tbody>' +
+    DB.events.slice().sort(function (a, b) { return a.date < b.date ? -1 : 1; }).map(function (ev) {
+      const relCourse = ev.courseId ? getCourse(ev.courseId) : null;
+      return "<tr><td>" + badge(ev.type, eventTypeColor(ev.type)) + "</td>" +
+        "<td><b>" + esc(ev.title) + "</b>" +
+        (relCourse ? '<div class="muted">关联课程：' + esc(relCourse.name) + "</div>" : "") +
+        (ev.note ? '<div class="muted">' + esc(ev.note) + "</div>" : "") + "</td>" +
+        "<td>" + esc(ev.date) + "</td>" +
+        "<td>" + esc(ev.start && ev.end ? ev.start + "-" + ev.end : ev.start || "全天") + "</td>" +
+        "<td>" + esc(ev.location || "-") + "</td>" +
+        "<td>" + eventStatusBadge(ev) + "</td>" +
+        '<td><span class="flex" style="gap:10px"><span class="link" data-event-edit="' + ev.id + '">编辑</span>' +
+        '<span class="link" data-event-del="' + ev.id + '">删除</span></span></td></tr>';
+    }).join("") + "</tbody></table>";
+}
+
+function eventForm(ev) {
+  formModal({
+    title: ev ? "编辑日程" : "新增日程",
+    body:
+      '<div class="form-row">' +
+      fieldHTML("类型", selectHTML("type", ev ? ev.type : "监考", EVENT_TYPES), true) +
+      fieldHTML("日期", inputHTML("date", ev ? ev.date : todayISO(), { type: "date" }), true) +
+      "</div>" +
+      fieldHTML("标题", inputHTML("title", ev ? ev.title : "", { placeholder: "如：数据结构期末考试监考" }), true) +
+      '<div class="form-row">' +
+      fieldHTML("开始时间", inputHTML("start", ev ? ev.start : "09:00", { type: "time" })) +
+      fieldHTML("结束时间", inputHTML("end", ev ? ev.end : "11:00", { type: "time" })) +
+      fieldHTML("地点", inputHTML("location", ev ? ev.location : "", { placeholder: "如：教学楼A305" })) +
+      "</div>" +
+      fieldHTML("关联课程（可选）", selectHTML("courseId", ev ? ev.courseId : "",
+        DB.courses.map(function (c) { return { value: c.id, text: c.name }; }),
+        { allowEmpty: true, emptyText: "不关联课程" })) +
+      fieldHTML("备注", textareaHTML("note", ev ? ev.note : "", { rows: 2, placeholder: "如：提前 30 分钟到考务办领卷" })),
+    onSubmit: function (data) {
+      if (!data.title.trim()) { toast("请填写标题"); return false; }
+      if (!data.date) { toast("请选择日期"); return false; }
+      if (data.start && data.end && data.end < data.start) { toast("结束时间不能早于开始时间"); return false; }
+      const payload = {
+        type: data.type, title: data.title.trim(), date: data.date,
+        start: data.start, end: data.end, location: data.location.trim(),
+        courseId: data.courseId, note: data.note.trim()
+      };
+      if (ev) {
+        Object.assign(ev, payload);
+        toast("日程已更新");
+      } else {
+        DB.events.push(Object.assign({ id: uid() }, payload));
+        toast("日程已登记，将同步到教学日历");
+      }
+      saveDB();
+      renderApp();
+    }
+  });
+}
+
 function bindSettings(view) {
   $("#set-save", view).addEventListener("click", function () {
     DB.settings.teacherName = $("#set-name", view).value.trim();
@@ -86,6 +157,24 @@ function bindSettings(view) {
   });
 
   $("#term-add", view).addEventListener("click", function () { termForm(null); });
+
+  const evAdd = $("#event-add", view);
+  evAdd && evAdd.addEventListener("click", function () { eventForm(null); });
+  $$("[data-event-edit]", view).forEach(function (el) {
+    el.addEventListener("click", function () { eventForm(getEvent(el.getAttribute("data-event-edit"))); });
+  });
+  $$("[data-event-del]", view).forEach(function (el) {
+    el.addEventListener("click", function () {
+      const ev = getEvent(el.getAttribute("data-event-del"));
+      if (!ev) return;
+      confirmModal("确定删除日程 <b>" + esc(ev.title) + "</b>（" + esc(ev.type) + " " + esc(ev.date) + "）？", function () {
+        DB.events = DB.events.filter(function (x) { return x.id !== ev.id; });
+        saveDB();
+        toast("日程已删除");
+        renderApp();
+      }, "删除");
+    });
+  });
 
   $$("[data-term-cur]", view).forEach(function (el) {
     el.addEventListener("click", function () {

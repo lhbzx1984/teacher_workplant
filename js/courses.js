@@ -24,11 +24,11 @@ function renderCourses(view) {
     h += '<div class="card"><div class="empty"><div class="empty-icon">&#9673;</div>' + (selTermId ? "该学期还没有课程" : "暂无课程") + '<button class="btn btn-light btn-sm" id="course-add-2" style="margin-top:14px">新增第一门课程</button></div></div>';
   } else {
     h += '<div class="card">' +
-      '<table class="tbl"><thead><tr><th>课程</th><th>课程号</th><th>班级</th><th>性质</th><th>学分</th><th>理论/实验学时</th><th>名单</th><th style="width:120px">操作</th></tr></thead><tbody>' +
+      '<table class="tbl"><thead><tr><th>课程</th><th>课程号</th><th>班级</th><th>性质</th><th>考核方式</th><th>学分</th><th>理论/实验学时</th><th>名单</th><th style="width:120px">操作</th></tr></thead><tbody>' +
       courses.map(function (c) {
         return '<tr class="clickable" data-go="course/' + c.id + '">' +
           "<td><b>" + esc(c.name) + "</b></td><td>" + esc(c.no || "-") + "</td><td>" + esc(c.className || "-") + "</td>" +
-          "<td>" + badge(c.nature || "必修", "blue") + "</td><td>" + esc(c.credits || "-") + "</td>" +
+          "<td>" + badge(c.nature || "必修", "blue") + "</td><td>" + badge(examTypeOf(c), "amber") + "</td><td>" + esc(c.credits || "-") + "</td>" +
           "<td>" + (c.theoryHours || 0) + " / " + (c.labHours || 0) + "</td>" +
           "<td>" + (c.roster || []).length + " 人</td>" +
           '<td><span class="flex" style="gap:10px;justify-content:flex-end"><span class="link" data-course-edit="' + c.id + '">编辑</span><span class="link" data-course-del="' + c.id + '">删除</span></span></td></tr>';
@@ -41,7 +41,7 @@ function renderCourses(view) {
 
 function courseForm(course) {
   const term = currentTerm();
-  formModal({
+  const overlay = formModal({
     title: course ? "编辑课程" : "新增课程",
     body:
       '<div class="form-row">' +
@@ -51,6 +51,7 @@ function courseForm(course) {
       '<div class="form-row">' +
       fieldHTML("开课学期", selectHTML("termId", course ? course.termId : (term && term.id), DB.terms.map(function (t) { return { value: t.id, text: t.name }; }), { allowEmpty: true, emptyText: "请选择学期" }), true) +
       fieldHTML("课程性质", selectHTML("nature", course ? course.nature : "必修", ["必修", "选修", "实践"])) +
+      fieldHTML("考核方式", selectHTML("examType", examTypeOf(course), EXAM_TYPES)) +
       "</div>" +
       '<div class="form-row">' +
       fieldHTML("学分", inputHTML("credits", course ? course.credits : 3, { type: "number", attrs: ' step="0.5" min="0.5"' })) +
@@ -60,6 +61,11 @@ function courseForm(course) {
       '<div class="form-row">' +
       fieldHTML("授课班级", inputHTML("className", course ? course.className : "", { placeholder: "如：计科2301" })) +
       "</div>" +
+      '<div class="section-title" style="margin-top:4px">授课时段<span style="font-weight:400;font-size:12px;color:var(--ink-3);margin-left:8px">将同步显示在仪表盘教学日历</span></div>' +
+      '<div id="slot-rows"></div>' +
+      '<div class="flex" style="margin-bottom:13px">' +
+      '<button type="button" class="btn btn-light btn-sm" id="slot-add">＋ 添加时段</button>' +
+      '<span class="hint">同一门课可添加多个时段，类型分「理论 / 实验」</span></div>' +
       '<div class="section-title" style="margin-top:4px">成绩权重（%）</div>' +
       '<div class="form-row">' +
       fieldHTML("平时", inputHTML("w1", course ? course.weights.regular : 30, { type: "number", attrs: ' min="0" max="100"' })) +
@@ -71,10 +77,19 @@ function courseForm(course) {
       if (!data.termId) { toast("请选择开课学期"); return false; }
       const w1 = Number(data.w1) || 0, w2 = Number(data.w2) || 0, w3 = Number(data.w3) || 0;
       if (w1 + w2 + w3 !== 100) { toast("三项成绩权重之和必须等于 100"); return false; }
+      const newSlots = readSlotRows(overlay);
+      for (let i = 0; i < newSlots.length; i++) {
+        if (newSlots[i].start && newSlots[i].end && newSlots[i].end < newSlots[i].start) {
+          toast("第 " + (i + 1) + " 个时段的结束时间不能早于开始时间");
+          return false;
+        }
+      }
       const payload = {
         name: data.name.trim(), no: data.no.trim(), termId: data.termId, nature: data.nature,
+        examType: data.examType,
         credits: data.credits, theoryHours: Number(data.theoryHours) || 0, labHours: Number(data.labHours) || 0,
-        className: data.className.trim(), weights: { regular: w1, midterm: w2, final: w3 }
+        className: data.className.trim(), weights: { regular: w1, midterm: w2, final: w3 },
+        slots: newSlots
       };
       if (course) {
         Object.assign(course, payload);
@@ -87,6 +102,63 @@ function courseForm(course) {
       renderApp();
     }
   });
+
+  /* —— 授课时段行编辑器（无 name 属性，避免混入表单数据） —— */
+  const rowsBox = $("#slot-rows", overlay);
+  let slotList = course ? JSON.parse(JSON.stringify(courseSlotsOf(course))) : [];
+  if (!slotList.length) slotList = [{ type: "理论", day: 1, start: "08:00", end: "09:40" }];
+
+  function renderSlotRows() {
+    rowsBox.innerHTML = slotList.map(slotRowHTML).join("") ||
+      '<div class="hint" style="margin-bottom:8px">尚未设置授课时段，课程不会出现在教学日历中</div>';
+  }
+  renderSlotRows();
+
+  $("#slot-add", overlay).addEventListener("click", function () {
+    slotList = readSlotRows(overlay);
+    slotList.push({ type: "理论", day: 1, start: "08:00", end: "09:40" });
+    renderSlotRows();
+  });
+  rowsBox.addEventListener("click", function (e) {
+    const del = e.target.closest("[data-slot-del]");
+    if (!del) return;
+    slotList = readSlotRows(overlay);
+    slotList.splice(Array.prototype.indexOf.call(rowsBox.querySelectorAll(".slot-row"), del.closest(".slot-row")), 1);
+    renderSlotRows();
+  });
+}
+
+function slotRowHTML(slot) {
+  slot = slot || {};
+  const day = Number(slot.day) >= 1 && Number(slot.day) <= 7 ? Number(slot.day) : 1;
+  return '<div class="slot-row">' +
+    '<select class="input" data-slot-type>' +
+    ["理论", "实验"].map(function (t) { return '<option' + ((slot.type || "理论") === t ? " selected" : "") + ">" + t + "</option>"; }).join("") +
+    "</select>" +
+    '<select class="input" data-slot-day>' +
+    [1, 2, 3, 4, 5, 6, 7].map(function (d) { return '<option value="' + d + '"' + (day === d ? " selected" : "") + ">周" + "一二三四五六日".charAt(d - 1) + "</option>"; }).join("") +
+    "</select>" +
+    '<input type="time" class="input" data-slot-start value="' + esc(slot.start || "") + '">' +
+    '<span class="slot-dash">–</span>' +
+    '<input type="time" class="input" data-slot-end value="' + esc(slot.end || "") + '">' +
+    '<button type="button" class="btn btn-light btn-sm" data-slot-del>删除</button>' +
+    "</div>";
+}
+
+/* 从弹窗 DOM 读取全部时段行；起止时间均为空的行视为未填写、自动忽略 */
+function readSlotRows(overlay) {
+  const rows = [];
+  $$(".slot-row", overlay).forEach(function (row) {
+    const start = $("[data-slot-start]", row).value;
+    const end = $("[data-slot-end]", row).value;
+    if (!start && !end) return;
+    rows.push({
+      type: $("[data-slot-type]", row).value,
+      day: Number($("[data-slot-day]", row).value),
+      start: start, end: end
+    });
+  });
+  return rows;
 }
 
 function bindCourses(view) {
@@ -141,11 +213,19 @@ function renderCourseDetail(view, courseId) {
   let h = "";
   h += '<div class="page-head"><div class="flex"><span class="link" data-go="courses" style="margin-right:4px">课程教学</span><span class="muted">/</span><div class="page-title">' + esc(c.name) +
     "<small>" + esc(c.no || "") + " · " + esc(term ? term.name : "未设置学期") + (week ? " · 当前第 " + week + " 周" : "") + "</small></div></div>" +
-    '<div class="toolbar"><span class="muted">理论 ' + (c.theoryHours || 0) + ' 学时 · 实验 ' + (c.labHours || 0) + ' 学时 · 权重 平时' + c.weights.regular + "/期中" + c.weights.midterm + "/期末" + c.weights.final + '</span><button class="btn btn-light" data-course-edit="' + c.id + '">编辑课程</button></div></div>';
+    '<div class="toolbar"><span class="muted">理论 ' + (c.theoryHours || 0) + ' 学时 · 实验 ' + (c.labHours || 0) + ' 学时 · 考核方式 ' + examTypeOf(c) + ' · 权重 平时' + c.weights.regular + "/期中" + c.weights.midterm + "/期末" + c.weights.final + '</span><button class="btn btn-light" data-course-edit="' + c.id + '">编辑课程</button></div></div>';
 
   h += '<div class="tabs">' + tabs.map(function (t) {
     return '<div class="tab' + (courseTab === t[0] ? " active" : "") + '" data-tab="' + t[0] + '">' + t[1] + "</div>";
   }).join("") + "</div>";
+
+  const slots = courseSlotsOf(c);
+  if (slots.length) {
+    h += '<div class="card" style="padding:10px 18px"><div class="flex">' +
+      '<span class="muted" style="flex:0 0 auto">授课时段</span>' +
+      slots.map(function (s) { return badge(slotLabel(s), s.type === "实验" ? "purple" : "blue"); }).join("") +
+      '<span class="muted" style="flex:0 0 auto">同步显示在仪表盘教学日历</span></div></div>';
+  }
 
   h += '<div id="course-tab-body"></div>';
   view.innerHTML = h;
