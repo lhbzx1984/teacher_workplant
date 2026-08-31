@@ -275,6 +275,32 @@ function calendarItemsOfDate(dateISO, term) {
       color: ledgerTypeColor(l.type)
     });
   });
+  /* 科研项目节点跟踪：勾选「跟踪」的节点同步到日历（未完成=红 / 已完成=绿），点击直达项目详情 */
+  (DB.projects || []).forEach(function (p) {
+    (p.milestones || []).forEach(function (m) {
+      if (!m.track || m.date !== dateISO) return;
+      items.push({
+        kind: "ms", ref: m, title: p.name + " · " + m.name, typeTag: "科研节点",
+        start: "", end: "", go: "project/" + p.id,
+        color: m.done ? "green" : "red"
+      });
+    });
+  });
+  /* 学科竞赛时间跟踪：报名截止 / 决赛时间可分别勾选跟踪，同步到日历（红色醒目） */
+  (DB.competitions || []).forEach(function (c) {
+    if (c.trackReg && c.regDeadline === dateISO) {
+      items.push({
+        kind: "comp", ref: c, title: c.name, typeTag: "竞赛报名截止",
+        start: "", end: "", go: "comp/" + c.id, color: "red"
+      });
+    }
+    if (c.trackFinal && c.finalDate === dateISO) {
+      items.push({
+        kind: "comp", ref: c, title: c.name, typeTag: "竞赛决赛",
+        start: "", end: "", go: "comp/" + c.id, color: "red"
+      });
+    }
+  });
   items.sort(function (a, b) { return (parseHM(a.start) || 0) - (parseHM(b.start) || 0); });
   return items;
 }
@@ -544,12 +570,14 @@ function seedDemo() {
   db.competitions.push({
     id: compId1, name: "蓝桥杯全国软件和信息技术专业人才大赛", level: "省级",
     organizer: "工业和信息化部人才交流中心", website: "https://www.lanqiao.cn",
-    regDeadline: "2026-09-10", finalDate: "2027-04-15", status: "备赛中", note: "个人赛，每生限报一个组别"
+    regDeadline: "2026-09-10", finalDate: "2027-04-15", status: "备赛中", note: "个人赛，每生限报一个组别",
+    trackReg: true, trackFinal: true
   });
   db.competitions.push({
     id: compId2, name: "中国国际大学生创新大赛", level: "国家级",
     organizer: "教育部等部委", website: "https://cy.ncss.cn",
-    regDeadline: "2026-10-15", finalDate: "2027-03-20", status: "报名中", note: "团队赛，5人以内"
+    regDeadline: "2026-10-15", finalDate: "2027-03-20", status: "报名中", note: "团队赛，5人以内",
+    trackReg: true, trackFinal: false
   });
 
   db.teams.push({
@@ -570,9 +598,9 @@ function seedDemo() {
     level: "省部级", role: "主持", fund: 100000, startDate: "2026-01-01", endDate: "2027-12-31",
     status: "在研", note: "教育厅高校科研重点项目",
     milestones: [
-      { id: uid(), name: "开题论证会", date: "2026-03-10", done: true },
-      { id: uid(), name: "中期检查", date: "2026-09-20", done: false },
-      { id: uid(), name: "结题验收", date: "2027-11-30", done: false }
+      { id: uid(), name: "开题论证会", date: "2026-03-10", done: true, track: true },
+      { id: uid(), name: "中期检查", date: "2026-09-20", done: false, track: true },
+      { id: uid(), name: "结题验收", date: "2027-11-30", done: false, track: false }
     ]
   });
   db.outputs.push({

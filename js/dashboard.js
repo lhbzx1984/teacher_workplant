@@ -176,16 +176,29 @@ function statCard(label, value, unit, sub) {
     (sub ? '<div class="stat-sub">' + esc(sub) + "</div>" : "") + "</div>";
 }
 
-/* 明日提醒：明天到期的「准备」状态跟踪事项（提前一天提醒），无则返回空串 */
+/* 明日提醒：明天到期的跟踪类条目（跟踪事项 + 跟踪中的科研节点 + 跟踪的竞赛报名截止/决赛），提前一天提醒，无则返回空串 */
 function tomorrowRemindHTML() {
   const tomorrow = addDaysISO(todayISO(), 1);
-  const items = (DB.todos || []).filter(function (t) { return t.status !== "完成" && t.date === tomorrow; });
+  const items = [];
+  (DB.todos || []).forEach(function (t) {
+    if (t.status !== "完成" && t.date === tomorrow) items.push({ text: t.title, go: "students/todos" });
+  });
+  (DB.projects || []).forEach(function (p) {
+    (p.milestones || []).forEach(function (m) {
+      if (m.track && !m.done && m.date === tomorrow) items.push({ text: p.name + " · " + m.name + "（科研节点）", go: "project/" + p.id });
+    });
+  });
+  (DB.competitions || []).forEach(function (c) {
+    if (c.status === "已结束") return;
+    if (c.trackReg && c.regDeadline === tomorrow) items.push({ text: c.name + "（报名截止）", go: "comp/" + c.id });
+    if (c.trackFinal && c.finalDate === tomorrow) items.push({ text: c.name + "（决赛）", go: "comp/" + c.id });
+  });
   if (!items.length) return "";
   return '<div class="dash-remind">' +
     '<b>明日提醒</b>' +
     '<span>' + esc(tomorrow) + " 有 " + items.length + " 项跟踪事项到期：</span>" +
-    items.map(function (t) { return '<span class="remind-item">' + esc(t.title) + "</span>"; }).join("") +
-    '<span style="flex:1"></span><span class="link" data-go="students/todos">去处理</span></div>';
+    items.map(function (it) { return '<span class="remind-item" data-go="' + esc(it.go) + '" style="cursor:pointer">' + esc(it.text) + "</span>"; }).join("") +
+    "</div>";
 }
 
 function todoListHTML() {

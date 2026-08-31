@@ -201,14 +201,16 @@ function renderProjectDetail(view, projId) {
     '<div class="muted">经费执行进度：' + fmtMoney(spent) + " / " + fmtMoney(p.fund) + (p.note ? " · " + esc(p.note) : "") + "</div></div></div>";
 
   h += '<div class="grid grid-2">';
-  h += '<div class="card"><div class="card-head"><div class="card-title">节点管理</div><button class="btn btn-sm" id="ms-add">添加节点</button></div><div class="card-body"><div class="timeline">';
+  h += '<div class="card"><div class="card-head"><div class="card-title">节点管理<span class="muted" style="font-weight:400;margin-left:8px;font-size:12px">跟踪的节点自动同步教学日历（未完成红色 / 已完成绿色）</span></div><button class="btn btn-sm" id="ms-add">添加节点</button></div><div class="card-body"><div class="timeline">';
   if (!(p.milestones || []).length) h += '<div class="hint">还没有节点，建议至少添加：开题、中期检查、结题验收</div>';
   (p.milestones || []).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (m) {
     const d = daysUntil(m.date);
     const cls = m.done ? "done" : d !== null && d < 0 ? "overdue" : "";
     h += '<div class="tl-item ' + cls + '"><div class="tl-dot"></div>' +
-      '<div class="tl-date">' + esc(m.date) + (m.done ? "（已完成）" : d !== null && d < 0 ? "（已逾期）" : d !== null && d <= 30 ? "（" + d + " 天后）" : "") + "</div>" +
+      '<div class="tl-date">' + esc(m.date) + (m.done ? "（已完成）" : d !== null && d < 0 ? "（已逾期）" : d !== null && d <= 30 ? "（" + d + " 天后）" : "") +
+      (m.track ? ' <span class="badge badge-red">跟踪中</span>' : "") + "</div>" +
       '<div class="tl-title"><b>' + esc(m.name) + '</b> <span class="link" data-ms-toggle="' + m.id + '">' + (m.done ? "撤销完成" : "标记完成") + "</span> " +
+      '<span class="link" data-ms-track="' + m.id + '">' + (m.track ? "取消跟踪" : "跟踪") + "</span> " +
       '<span class="link" data-ms-del="' + m.id + '">删除</span></div></div>';
   });
   h += "</div></div></div>";
@@ -252,12 +254,14 @@ function bindProjectDetail(view, p) {
       title: "添加节点",
       body:
         fieldHTML("节点名称", inputHTML("name", "", { placeholder: "如：中期检查 / 结题验收" }), true) +
-        fieldHTML("日期", inputHTML("date", todayISO(), { type: "date" }), true),
+        fieldHTML("日期", inputHTML("date", todayISO(), { type: "date" }), true) +
+        fieldHTML("同步到日历", '<label class="flex" style="gap:6px;font-size:13px"><input type="checkbox" name="track" checked>' +
+          '跟踪此节点，同步到教学日历与仪表盘明日提醒</label>'),
       onSubmit: function (data) {
         if (!data.name.trim()) { toast("请填写节点名称"); return false; }
         p.milestones = p.milestones || [];
-        p.milestones.push({ id: uid(), name: data.name.trim(), date: data.date, done: false });
-        saveDB(); toast("节点已添加"); renderApp();
+        p.milestones.push({ id: uid(), name: data.name.trim(), date: data.date, done: false, track: !!data.track });
+        saveDB(); toast("节点已添加" + (data.track ? "，已同步教学日历" : "")); renderApp();
       }
     });
   });
@@ -267,6 +271,13 @@ function bindProjectDetail(view, p) {
       const m = p.milestones.find(function (x) { return x.id === el.getAttribute("data-ms-toggle"); });
       m.done = !m.done;
       saveDB(); renderApp();
+    });
+  });
+  $$("[data-ms-track]", view).forEach(function (el) {
+    el.addEventListener("click", function () {
+      const m = p.milestones.find(function (x) { return x.id === el.getAttribute("data-ms-track"); });
+      m.track = !m.track;
+      saveDB(); toast(m.track ? "已跟踪，同步到教学日历" : "已取消跟踪"); renderApp();
     });
   });
   $$("[data-ms-del]", view).forEach(function (el) {

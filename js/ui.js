@@ -100,7 +100,12 @@ function formModal(opts) {
   const form = $("[data-form]", overlay);
   $("[data-ok]", overlay).addEventListener("click", function () {
     const data = {};
-    $$("[name]", form).forEach(function (inp) { data[inp.name] = inp.value; });
+    /* checkbox 按 checked 取布尔值（未勾选时 value 恒为 "on"，不能作真值依据）；其余取 value */
+    $$("[name]", form).forEach(function (inp) {
+      if (inp.type === "checkbox") data[inp.name] = !!inp.checked;
+      else if (inp.type === "radio") { if (inp.checked) data[inp.name] = inp.value; }
+      else data[inp.name] = inp.value;
+    });
     if (opts.validate && opts.validate(data) === false) return;
     if (opts.onSubmit(data) !== false) closeModal();
   });

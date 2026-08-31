@@ -22,7 +22,8 @@ function renderCompetitions(view) {
       const results = DB.compResults.filter(function (r) { return r.competitionId === c.id; });
       const d = daysUntil(c.regDeadline);
       const regHint = d !== null && d >= 0 && d <= 14 && c.status !== "已结束" ? badge(d === 0 ? "今天截止" : d + " 天后截止", "red") : "";
-      h += '<tr class="clickable" data-go="comp/' + c.id + '"><td><b>' + esc(c.name) + '</b> <span class="muted">' + esc(c.organizer || "") + "</span></td>" +
+      h += '<tr class="clickable" data-go="comp/' + c.id + '"><td><b>' + esc(c.name) + '</b> <span class="muted">' + esc(c.organizer || "") + "</span>" +
+        ((c.trackReg || c.trackFinal) ? ' <span class="badge badge-red">跟踪中</span>' : "") + "</td>" +
         "<td>" + levelBadge(c.level) + "</td>" +
         "<td>" + esc(c.regDeadline || "-") + " " + regHint + "</td><td>" + esc(c.finalDate || "-") + "</td>" +
         "<td>" + statusBadge(c.status) + "</td><td>" + teams.length + "</td><td>" + results.length + "</td>" +
@@ -83,14 +84,20 @@ function competitionForm(comp) {
       fieldHTML("决赛/国赛时间", inputHTML("finalDate", comp ? comp.finalDate : "", { type: "date" })) +
       "</div>" +
       fieldHTML("官网", inputHTML("website", comp ? comp.website : "", { placeholder: "https://" })) +
-      fieldHTML("备注", textareaHTML("note", comp ? comp.note : "", { rows: 2, placeholder: "如：个人赛，每生限报一个组别" })),
+      fieldHTML("备注", textareaHTML("note", comp ? comp.note : "", { rows: 2, placeholder: "如：个人赛，每生限报一个组别" })) +
+      fieldHTML("同步到日历（跟踪）", '<div class="flex" style="gap:18px;flex-wrap:wrap;font-size:13px">' +
+        '<label class="flex" style="gap:6px"><input type="checkbox" name="trackReg"' + (comp && comp.trackReg ? " checked" : "") + ">跟踪<b>报名截止</b></label>" +
+        '<label class="flex" style="gap:6px"><input type="checkbox" name="trackFinal"' + (comp && comp.trackFinal ? " checked" : "") + ">跟踪<b>决赛时间</b></label>" +
+        "</div>") +
+      '<div class="hint" style="margin-top:6px">跟踪的时间点以红色显示在教学日历，并纳入仪表盘「明日提醒」（提前一天）</div>',
     onSubmit: function (data) {
       if (!data.name.trim()) { toast("请填写竞赛名称"); return false; }
       if (!data.regDeadline) { toast("请选择报名截止日期"); return false; }
       const payload = {
         name: data.name.trim(), level: data.level, status: data.status,
         organizer: data.organizer.trim(), regDeadline: data.regDeadline,
-        finalDate: data.finalDate, website: data.website.trim(), note: data.note.trim()
+        finalDate: data.finalDate, website: data.website.trim(), note: data.note.trim(),
+        trackReg: !!data.trackReg, trackFinal: !!data.trackFinal
       };
       if (comp) { Object.assign(comp, payload); toast("竞赛已更新"); }
       else { DB.competitions.push(Object.assign({ id: uid() }, payload)); toast("竞赛已创建"); }
@@ -143,9 +150,11 @@ function renderCompDetail(view, compId) {
   h += '<div class="card"><div class="card-body"><div class="kv">' +
     "<div class='k'>主办单位</div><div>" + esc(c.organizer || "-") + "</div>" +
     "<div class='k'>报名截止</div><div>" + esc(c.regDeadline || "-") +
-    (regD !== null && regD >= 0 && c.status !== "已结束" ? "（" + (regD === 0 ? "今天" : regD + " 天后") + "）" : "") + "</div>" +
+    (regD !== null && regD >= 0 && c.status !== "已结束" ? "（" + (regD === 0 ? "今天" : regD + " 天后") + "）" : "") +
+    (c.trackReg ? ' <span class="badge badge-red">跟踪中</span> <span class="link" data-comp-track-reg>取消跟踪</span>' : ' <span class="link" data-comp-track-reg>跟踪到日历</span>') + "</div>" +
     "<div class='k'>决赛时间</div><div>" + esc(c.finalDate || "-") +
-    (finD !== null && finD >= 0 ? "（" + (finD === 0 ? "今天" : finD + " 天后") + "）" : "") + "</div>" +
+    (finD !== null && finD >= 0 ? "（" + (finD === 0 ? "今天" : finD + " 天后") + "）" : "") +
+    (c.trackFinal ? ' <span class="badge badge-red">跟踪中</span> <span class="link" data-comp-track-final>取消跟踪</span>' : ' <span class="link" data-comp-track-final>跟踪到日历</span>') + "</div>" +
     "<div class='k'>备注</div><div>" + esc(c.note || "-") + "</div>" +
     "</div></div></div>";
 
@@ -186,6 +195,17 @@ function renderCompDetail(view, compId) {
 function bindCompDetail(view, c) {
   const editBtn = $("[data-comp-edit]", view);
   editBtn && editBtn.addEventListener("click", function () { competitionForm(c); });
+
+  const regToggle = $("[data-comp-track-reg]", view);
+  regToggle && regToggle.addEventListener("click", function () {
+    c.trackReg = !c.trackReg;
+    saveDB(); toast(c.trackReg ? "已跟踪报名截止，同步到教学日历" : "已取消跟踪报名截止"); renderApp();
+  });
+  const finalToggle = $("[data-comp-track-final]", view);
+  finalToggle && finalToggle.addEventListener("click", function () {
+    c.trackFinal = !c.trackFinal;
+    saveDB(); toast(c.trackFinal ? "已跟踪决赛时间，同步到教学日历" : "已取消跟踪决赛时间"); renderApp();
+  });
 
   $("#team-add", view).addEventListener("click", function () { teamForm(c, null); });
   $$("[data-team-edit]", view).forEach(function (el) { el.addEventListener("click", function () { teamForm(c, DB.teams.find(function (t) { return t.id === el.getAttribute("data-team-edit"); })); }); });
