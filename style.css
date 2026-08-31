@@ -31,6 +31,7 @@
   --warn: #B45309;
   --danger: #C2402A; --danger-strong: #A33625; --danger-tint: #F9E9E6; --danger-line: #EFC5BC;
   --violet: #534AB7; --violet-tint: #EEEDFE;
+  --teal: #2E7D7D; --teal-strong: #225F5F; --teal-tint: #E4F2F2; --teal-line: #C2E2E2;
 
   --on-primary: #FFFFFF;
   --hover-bg: #F1EEE9;
@@ -58,6 +59,7 @@
   --purple-50: var(--violet-tint); --purple-400: #8F86D6; --purple-600: var(--violet); --purple-800: #3C3489;
   --red-50: var(--danger-tint); --red-400: #D9705E; --red-600: var(--danger); --red-800: #8C2B1C;
   --gray-50: #F1EEE9; --gray-200: #C9C6BE; --gray-400: #9BA0A8; --gray-600: #6E7680;
+  --teal-50: var(--teal-tint); --teal-400: #4FA3A3; --teal-600: var(--teal);
   --bg: var(--paper); --card: var(--surface); --border: var(--line);
   --text: var(--ink); --text-2: var(--ink-2); --text-3: var(--ink-3);
 }
@@ -88,6 +90,7 @@
   --warn: #D89A55;
   --danger: #E08A77; --danger-strong: #EAA793; --danger-tint: #3A241F; --danger-line: #55302A;
   --violet: #A5A0E8; --violet-tint: #2B2840;
+  --teal: #6FBFBF; --teal-strong: #9AD5D5; --teal-tint: #1E3333; --teal-line: #2E4A4A;
 
   --on-primary: #101820;
   --hover-bg: #26292E;
@@ -99,6 +102,7 @@
 
   --blue-400: #5B7FA6; --green-400: #4A8A6C; --amber-400: #B4824A;
   --red-400: #C06B58; --purple-400: #6F68B5; --gray-400: #61666D;
+  --teal-400: #4FA3A3;
   --gray-50: #23262B; --gray-200: #4A4F55;
 }
 
@@ -238,6 +242,7 @@ textarea.input { resize: vertical; min-height: 64px; line-height: 1.55; }
 .badge-green { background: var(--ok-tint); color: var(--ok); border-color: var(--ok-line); }
 .badge-amber { background: var(--gold-tint); color: var(--gold-strong); border-color: var(--gold-line); }
 .badge-purple { background: var(--violet-tint); color: var(--violet); border-color: #CECBF6; }
+.badge-teal { background: var(--teal-tint); color: var(--teal-strong); border-color: var(--teal-line); }
 .badge-red { background: var(--danger-tint); color: var(--danger); border-color: var(--danger-line); }
 .badge-gray { background: var(--gray-50); color: var(--ink-2); border-color: var(--line); }
 
@@ -404,7 +409,7 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .cal-live::before { content: "●"; margin-right: 3px; animation: cal-blink 1.2s infinite; }
 @keyframes cal-blink { 50% { opacity: .15; } }
 
-/* 类型底色：理论=靛 / 实验=紫 / 监考=金 / 课程答辩=靛 / 毕业答辩=紫 / 特殊事件=朱 */
+/* 类型底色：理论=靛 / 实验=紫 / 监考=金 / 课程答辩=靛 / 毕业答辩=紫 / 特殊事件=朱 / 就业台账=青碧 */
 .cal-item.tag-blue { background: var(--primary-tint); border-color: var(--primary-line); }
 .cal-item.tag-blue .cal-tag { background: var(--blue-400); }
 .cal-item.tag-purple { background: var(--violet-tint); border-color: #CECBF6; }
@@ -417,6 +422,8 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .cal-item.tag-gray .cal-tag { background: var(--gray-400); }
 .cal-item.tag-green { background: var(--ok-tint); border-color: var(--ok-line); }
 .cal-item.tag-green .cal-tag { background: var(--green-400); }
+.cal-item.tag-teal { background: var(--teal-tint); border-color: var(--teal-line); }
+.cal-item.tag-teal .cal-tag { background: var(--teal-400); }
 
 /* 时间状态叠加：done 灰化，ongoing 金色高亮 */
 .cal-item.cal-done { opacity: .5; }

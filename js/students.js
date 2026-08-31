@@ -3,7 +3,7 @@
 let studentTab = "pool";
 
 const STUDENT_TAGS = ["资助", "心理关注", "重点关注", "学业预警"];
-const LOG_TYPES = ["谈话", "走访宿舍", "班会", "活动", "其他"];
+/* 台账类型体系（LOG_TYPES / ledgerTypeColor）已提升至数据层 data.js */
 
 function renderStudents(view) {
   /* 支持 #/students/todos、#/students/logs 等直达子页 */
@@ -15,10 +15,10 @@ function renderStudents(view) {
     ["logs", "工作台账" + countBadge(DB.logs.filter(function (l) { return l.followUp && !l.done; }))],
     ["todos", "跟踪事项" + countBadge(DB.todos.filter(function (t) { return t.status !== "完成"; }))],
     ["awards", "评奖评优" + countBadge(DB.awards)],
-    ["stats", "就业与统计"]
+    ["stats", "统计分析"]
   ];
 
-  let h = '<div class="page-head"><div class="page-title">班主任学生管理<small>学生档案 · 谈心谈话 · 跟踪事项 · 走访台账 · 评奖评优</small></div>' +
+  let h = '<div class="page-head"><div class="page-title">班主任学生管理<small>学生档案 · 工作台账（评奖评优/就业/贫困生申报）· 跟踪事项 · 统计分析</small></div>' +
     '<div class="toolbar"><button class="btn btn-light" id="stu-import">导入学生</button><button class="btn" id="stu-add">新建学生档案</button></div></div>';
   h += '<div class="tabs">' + tabs.map(function (t) {
     return '<div class="tab' + (studentTab === t[0] ? " active" : "") + '" data-stu-tab="' + t[0] + '">' + t[1] + "</div>";
@@ -287,7 +287,7 @@ function renderStudentDetail(view, studentId) {
         (t.status === "完成" ? badge("完成", "green") : badge("准备", "amber")) + "</div></div>";
     });
     logs.slice().reverse().forEach(function (l) {
-      h += '<div class="tl-item"><div class="tl-dot" style="border-color:var(--blue-400)"></div>' +
+      h += '<div class="tl-item"><div class="tl-dot" style="border-color:var(--' + ledgerTypeColor(l.type) + '-400)"></div>' +
         '<div class="tl-date">' + esc(l.date) + " · " + esc(l.type) + "</div>" +
         '<div class="tl-title"><b>' + esc(l.title) + "</b> — " + esc((l.content || "").slice(0, 80)) + ((l.content || "").length > 80 ? "…" : "") + "</div>" +
         (l.followUp ? '<div class="muted">跟进：' + esc(l.followUp) + (l.done ? "（已完成）" : "") + "</div>" : "") + "</div>";
@@ -328,16 +328,18 @@ function renderLogList(body) {
   const filtered = typeFilter ? list.filter(function (l) { return l.type === typeFilter; }) : list;
 
   if (!filtered.length) {
-    h += '<div class="empty">还没有台账记录——谈话、走访宿舍、班会都值得留下记录</div>';
+    h += '<div class="empty">还没有台账记录——谈话、走访、班会，以及评奖评优、就业、贫困生申报等班级工作都值得留档</div>';
   } else {
-    h += '<table class="tbl"><thead><tr><th style="width:100px">日期</th><th style="width:86px">类型</th><th>事项与学生</th><th>跟进</th><th style="width:110px">操作</th></tr></thead><tbody>';
+    h += '<table class="tbl"><thead><tr><th style="width:100px">日期</th><th style="width:86px">类型</th><th>事项与学生</th><th>跟进</th><th style="width:150px">操作</th></tr></thead><tbody>';
     filtered.forEach(function (l) {
       const names = (l.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
-      h += "<tr><td>" + esc(l.date) + "</td><td>" + badge(l.type, l.type === "谈话" ? "blue" : l.type === "走访宿舍" ? "green" : "purple") + "</td>" +
+      h += "<tr><td>" + esc(l.date) + "</td><td>" + badge(l.type, ledgerTypeColor(l.type)) + "</td>" +
         "<td><b>" + esc(l.title) + "</b>" + (names ? '<div class="muted">' + esc(names) + "</div>" : "") +
         '<div class="muted" style="margin-top:2px">' + esc((l.content || "").slice(0, 60)) + ((l.content || "").length > 60 ? "…" : "") + "</div></td>" +
         "<td>" + (l.followUp ? (l.done ? badge("已完成", "green") : esc(l.followUp)) : "-") + "</td>" +
-        '<td><span class="flex" style="gap:10px"><span class="link" data-log-edit="' + l.id + '">编辑</span>' +
+        '<td><span class="flex" style="gap:10px">' +
+        (l.followUp && !l.done ? '<span class="link" data-log-todo="' + l.id + '">转跟踪事项</span>' : "") +
+        '<span class="link" data-log-edit="' + l.id + '">编辑</span>' +
         (l.followUp && !l.done ? '<span class="link" data-log-done="' + l.id + '">完成</span>' : "") +
         '<span class="link" data-log-del="' + l.id + '">删除</span></span></td></tr>';
     });
@@ -352,6 +354,12 @@ function renderLogList(body) {
   if (window.__logType) sel.value = window.__logType;
 
   $$("[data-log-edit]", body).forEach(function (el) { el.addEventListener("click", function () { logForm(DB.logs.find(function (l) { return l.id === el.getAttribute("data-log-edit"); }), null); }); });
+  $$("[data-log-todo]", body).forEach(function (el) {
+    el.addEventListener("click", function () {
+      const l = DB.logs.find(function (x) { return x.id === el.getAttribute("data-log-todo"); });
+      if (l) todoFromLog(l);
+    });
+  });
   $$("[data-log-done]", body).forEach(function (el) {
     el.addEventListener("click", function () {
       const l = DB.logs.find(function (x) { return x.id === el.getAttribute("data-log-done"); });
@@ -416,7 +424,7 @@ function renderTodoList(body) {
   const list = pending.concat(done);
 
   let h = '<div class="card"><div class="card-head"><div class="card-title">跟踪事项（' + DB.todos.length + " 项，待办 " + pending.length + "）</div>" +
-    '<span class="muted">班会、收缴、材料提交等班级事务 · 自动同步教学日历与仪表盘明日提醒</span>' +
+    '<span class="muted">班级事务盯办 · 可从工作台账一键转事项 · 自动同步教学日历与仪表盘明日提醒</span>' +
     '<button class="btn" id="todo-add">新增事项</button></div>';
 
   if (!list.length) {
@@ -426,11 +434,13 @@ function renderTodoList(body) {
     list.forEach(function (t) {
       const names = (t.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
       const isDone = t.status === "完成";
+      const linked = t.ledgerId ? getLog(t.ledgerId) : null;
       h += '<tr class="' + (isDone ? "muted" : "") + '"><td>' + esc(t.date) +
         (daysUntil(t.date) === 0 && !isDone ? " <span class='badge badge-red'>今天</span>" : "") +
         (daysUntil(t.date) === 1 && !isDone ? " <span class='badge badge-amber'>明天</span>" : "") +
         (daysUntil(t.date) < 0 && !isDone ? " <span class='badge badge-red'>已逾期</span>" : "") +
         "</td><td><b>" + esc(t.title) + "</b>" +
+        (linked ? " " + badge("台账·" + linked.type, ledgerTypeColor(linked.type)) : "") +
         (t.note ? '<div class="muted">' + esc(t.note) + "</div>" : "") + "</td>" +
         "<td>" + (names ? esc(names) : "-") + "</td>" +
         "<td>" + (isDone ? badge("完成", "green") : badge("准备", "amber")) + "</td>" +
@@ -482,22 +492,35 @@ function getTodo(id) {
   return (DB.todos || []).find(function (t) { return t.id === id; }) || null;
 }
 
-function todoForm(todo) {
+/* 从台账条目一键转跟踪事项：标题、跟进安排、涉及学生一并带入，并自动关联台账 */
+function todoFromLog(log) {
+  todoForm(null, {
+    title: log.title, note: log.followUp || "", ledgerId: log.id, studentIds: log.studentIds || []
+  });
+}
+
+function todoForm(todo, prefill) {
+  const t = todo || prefill || {};
+  const linkedLogs = DB.logs.slice().sort(function (a, b) { return a.date < b.date ? 1 : -1; });
   formModal({
     title: todo ? "编辑跟踪事项" : "新增跟踪事项",
     body:
       '<div class="form-row">' +
-      fieldHTML("事项标题", inputHTML("title", todo ? todo.title : "", { placeholder: "如：收缴英语四级报名费" }), true) +
-      fieldHTML("截止日期", inputHTML("date", todo ? todo.date : todayISO(), { type: "date" }), true) +
+      fieldHTML("事项标题", inputHTML("title", t.title || "", { placeholder: "如：收缴英语四级报名费" }), true) +
+      fieldHTML("截止日期", inputHTML("date", t.date || todayISO(), { type: "date" }), true) +
       "</div>" +
       '<div class="form-row">' +
-      fieldHTML("状态", selectHTML("status", todo ? todo.status : "准备", ["准备", "完成"])) +
-      fieldHTML("备注", inputHTML("note", todo ? todo.note : "", { placeholder: "如：每人 30 元，扫码收款后登记" })) +
+      fieldHTML("状态", selectHTML("status", t.status || "准备", ["准备", "完成"])) +
+      fieldHTML("备注", inputHTML("note", t.note || "", { placeholder: "如：每人 30 元，扫码收款后登记" })) +
       "</div>" +
+      fieldHTML("关联台账（可选）", selectHTML("ledgerId", t.ledgerId || "", linkedLogs.map(function (l) {
+        return { value: l.id, text: l.type + " · " + l.date + " " + l.title };
+      }), { allowEmpty: true, emptyText: "不关联，独立登记事项" }) +
+        '<div class="hint" style="margin-top:5px">从工作台账（评奖评优 / 就业 / 贫困生申报等）中选择一条关联，日历将显示台账类型标签</div>') +
       fieldHTML("涉及学生（可多选）", '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">' +
         (DB.students.length ? DB.students.map(function (s) {
           return '<label class="flex" style="gap:6px;font-size:13px;margin:0 0 8px 0"><input type="checkbox" name="stu_' + s.id + '"' +
-            ((todo && (todo.studentIds || []).indexOf(s.id) >= 0) ? " checked" : "") + ">" +
+            ((t.studentIds || []).indexOf(s.id) >= 0 ? " checked" : "") + ">" +
             esc(s.name) + '<span class="muted">' + esc(s.no || "") + "</span></label>";
         }).join("") : '<span class="hint">学生池为空</span>') + "</div>"),
     onSubmit: function (data) {
@@ -508,8 +531,10 @@ function todoForm(todo) {
         title: data.title.trim(), date: data.date, status: data.status,
         note: data.note.trim(), studentIds: studentIds
       };
+      if (data.ledgerId) payload.ledgerId = data.ledgerId;
       if (todo) {
         Object.assign(todo, payload);
+        if (!data.ledgerId) delete todo.ledgerId;
         toast("事项已更新");
       } else {
         DB.todos.push(Object.assign({ id: uid() }, payload));
@@ -572,24 +597,92 @@ function renderAwardList(body) {
   });
 }
 
-/* ---------- 就业与统计 ---------- */
+/* ---------- 统计分析（学生管理独立模块） ---------- */
 
 function renderStudentStats(body) {
+  const logs = DB.logs || [];
+  const todos = DB.todos || [];
+  const students = DB.students || [];
+
+  /* 台账分类统计 */
+  const byType = {};
+  LOG_TYPES.forEach(function (t) { byType[t] = { total: 0, done: 0 }; });
+  logs.forEach(function (l) {
+    const k = byType[l.type] ? l.type : "其他";
+    byType[k].total++;
+    if (l.done) byType[k].done++;
+  });
+  const logDone = logs.filter(function (l) { return l.done; }).length;
+
+  /* 月度台账趋势（近 6 个月） */
+  const months = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+    months.push({ key: key, label: d.getFullYear() + "年" + (d.getMonth() + 1) + "月", n: 0 });
+  }
+  logs.forEach(function (l) {
+    const k = String(l.date || "").slice(0, 7);
+    const m = months.find(function (x) { return x.key === k; });
+    if (m) m.n++;
+  });
+
+  /* 跟踪事项统计 */
+  const todoPending = todos.filter(function (t) { return t.status !== "完成"; });
+  const todoDone = todos.filter(function (t) { return t.status === "完成"; });
+  const todoOverdue = todoPending.filter(function (t) { return t.date < todayISO(); });
+  const todoSoon = todoPending.filter(function (t) {
+    const d = daysUntil(t.date);
+    return d !== null && d >= 0 && d <= 7;
+  }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+  const doneRate = todos.length ? Math.round(todoDone.length / todos.length * 100) : 0;
+
+  /* 就业 · 资助 · 评优动态 */
+  const dynamicLogs = logs.filter(function (l) {
+    return l.type === "就业" || l.type === "贫困生申报" || l.type === "评奖评优";
+  }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+
+  /* 学生维度活跃度 */
+  const perStu = {};
+  students.forEach(function (s) { perStu[s.id] = { name: s.name, cls: s.className, logs: 0, todos: 0 }; });
+  logs.forEach(function (l) { (l.studentIds || []).forEach(function (id) { if (perStu[id]) perStu[id].logs++; }); });
+  todos.forEach(function (t) { (t.studentIds || []).forEach(function (id) { if (perStu[id]) perStu[id].todos++; }); });
+  const actives = Object.keys(perStu).map(function (id) { return perStu[id]; })
+    .filter(function (x) { return x.logs + x.todos > 0; })
+    .sort(function (a, b) { return (b.logs + b.todos) - (a.logs + a.todos); })
+    .slice(0, 8);
+
+  /* 班级分布 */
   const classes = {};
-  DB.students.forEach(function (s) {
+  students.forEach(function (s) {
     const cn = s.className || "未分班";
     classes[cn] = (classes[cn] || 0) + 1;
   });
-
-  const tagCnt = {};
-  DB.students.forEach(function (s) { (s.tags || []).forEach(function (t) { tagCnt[t] = (tagCnt[t] || 0) + 1; }); });
-
-  const logByType = {};
-  DB.logs.forEach(function (l) { logByType[l.type] = (logByType[l.type] || 0) + 1; });
-
-  let h = '<div class="grid grid-2">';
-  h += '<div class="card"><div class="card-head"><div class="card-title">班级分布（共 ' + DB.students.length + ' 人）</div></div><div class="card-body">';
   const maxC = Math.max.apply(null, Object.keys(classes).map(function (k) { return classes[k]; }).concat([1]));
+
+  /* 重点关注群体 */
+  const tagCnt = {};
+  students.forEach(function (s) { (s.tags || []).forEach(function (t) { tagCnt[t] = (tagCnt[t] || 0) + 1; }); });
+
+  const maxType = Math.max.apply(null, LOG_TYPES.map(function (t) { return byType[t].total; }).concat([1]));
+  const maxMonth = Math.max.apply(null, months.map(function (m) { return m.n; }).concat([1]));
+  const typeFill = {
+    "谈话": "var(--blue-400)", "走访宿舍": "var(--green-400)", "班会": "var(--purple-400)",
+    "活动": "var(--amber-400)", "评奖评优": "var(--red-400)", "就业": "var(--teal-400)",
+    "贫困生申报": "var(--purple-400)", "其他": "var(--gray-400)"
+  };
+
+  let h = '<div class="card"><div class="card-head"><div class="card-title">班主任工作概览</div><span class="muted">统计口径：本机全部数据 · 台账含评奖评优 / 就业 / 贫困生申报</span></div><div class="card-body">' +
+    '<div class="grid grid-4" style="gap:12px">' +
+    statCard("学生总数", students.length, "人", "档案池") +
+    statCard("台账记录", logs.length, "条", "已完成 " + logDone + " 条") +
+    statCard("跟踪事项", todos.length, "项", "待办 " + todoPending.length + " · 逾期 " + todoOverdue.length) +
+    statCard("事项完成率", doneRate + "%", "", todoDone.length + " / " + todos.length) +
+    "</div></div></div>";
+
+  h += '<div class="grid grid-2">';
+  h += '<div class="card"><div class="card-head"><div class="card-title">班级分布（共 ' + students.length + ' 人）</div></div><div class="card-body">';
   Object.keys(classes).sort().forEach(function (k) {
     h += '<div class="hbar-row"><div class="hbar-label">' + esc(k) + "</div>" +
       '<div class="hbar-track"><div class="hbar-fill" style="width:' + Math.round(classes[k] / maxC * 100) + '%">' + classes[k] + "</div></div></div>";
@@ -607,12 +700,69 @@ function renderStudentStats(body) {
   }
   h += "</div></div></div>";
 
-  h += '<div class="card"><div class="card-head"><div class="card-title">本学年班主任工作量（台账统计）</div></div><div class="card-body"><div class="flex">';
+  h += '<div class="grid grid-2">';
+  h += '<div class="card"><div class="card-head"><div class="card-title">台账分类统计（' + logs.length + " 条）</div></div><div class=\"card-body\">";
   LOG_TYPES.forEach(function (t) {
-    h += '<div class="stat" style="flex:1;border:1px solid var(--border);border-radius:10px;margin-right:6px"><div class="stat-label">' + t + "</div>" +
-      '<div class="stat-value" style="font-size:20px">' + (logByType[t] || 0) + '<span class="unit">次</span></div></div>';
+    const d = byType[t];
+    h += '<div class="hbar-row"><div class="hbar-label">' + esc(t) + "</div>" +
+      '<div class="hbar-track"><div class="hbar-fill" style="width:' + Math.round(d.total / maxType * 100) + '%;background:' + typeFill[t] + '">' +
+      d.total + (d.done ? '<span style="opacity:.8"> · ' + d.done + "</span>" : "") + "</div></div></div>";
   });
-  h += '</div><div class="hint" style="margin-top:10px">这些数据会自动汇入“考核汇总”模块的班主任工作量部分。</div></div></div>';
+  h += '<div class="hint" style="margin-top:8px">条数 · 其中已完成数；台账数据会自动汇入「考核汇总」的班主任工作量。</div></div></div>';
+
+  h += '<div class="card"><div class="card-head"><div class="card-title">台账月度趋势</div><span class="muted">近 6 个月</span></div><div class="card-body">';
+  months.forEach(function (m) {
+    h += '<div class="hbar-row"><div class="hbar-label" style="flex-basis:96px">' + esc(m.label) + "</div>" +
+      '<div class="hbar-track"><div class="hbar-fill" style="width:' + Math.round(m.n / maxMonth * 100) + '%">' + (m.n || "") + "</div></div></div>";
+  });
+  if (!months.some(function (m) { return m.n > 0; })) h += '<div class="hint">近 6 个月没有台账记录</div>';
+  h += "</div></div></div>";
+
+  h += '<div class="grid grid-2">';
+  h += '<div class="card"><div class="card-head"><div class="card-title">跟踪事项统计</div><span class="muted">准备 / 完成 两态</span></div><div class="card-body">' +
+    '<div class="grid grid-3" style="gap:10px">' +
+    statCard("待办", todoPending.length, "项", todoOverdue.length ? "逾期 " + todoOverdue.length + " 项" : "无逾期") +
+    statCard("已完成", todoDone.length, "项", "含历史事项") +
+    statCard("完成率", doneRate + "%", "", todoDone.length + " / " + todos.length) +
+    "</div>" +
+    '<div class="bar-track" style="margin-top:12px"><div class="bar-fill" style="width:' + doneRate + '%"></div></div>' +
+    (todoSoon.length
+      ? '<div class="section-title">近 7 天到期</div><table class="tbl"><tbody>' + todoSoon.slice(0, 6).map(function (t) {
+          const lg = t.ledgerId ? getLog(t.ledgerId) : null;
+          return "<tr><td>" + esc(t.date) + "</td><td>" + esc(t.title) +
+            (lg ? " " + badge(lg.type, ledgerTypeColor(lg.type)) : "") + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<div class="hint" style="margin-top:10px">近 7 天没有到期事项</div>') +
+    "</div></div>";
+
+  h += '<div class="card"><div class="card-head"><div class="card-title">就业 · 资助 · 评优动态</div><span class="muted">台账条目</span></div><div class="card-body">';
+  if (!dynamicLogs.length) {
+    h += '<div class="hint">暂无就业、资助、评优类台账——可在「工作台账」中按类型登记</div>';
+  } else {
+    h += '<div class="timeline">';
+    dynamicLogs.forEach(function (l) {
+      const names = (l.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
+      h += '<div class="tl-item"><div class="tl-dot" style="border-color:var(--' + ledgerTypeColor(l.type) + '-400)"></div>' +
+        '<div class="tl-date">' + esc(l.date) + " · " + badge(l.type, ledgerTypeColor(l.type)) + "</div>" +
+        '<div class="tl-title">' + esc(l.title) + (names ? '<span class="muted">（' + esc(names) + "）</span>" : "") + "</div></div>";
+    });
+    h += "</div>";
+  }
+  h += "</div></div></div>";
+
+  h += '<div class="card"><div class="card-head"><div class="card-title">学生工作活跃度 TOP</div><span class="muted">按台账 + 跟踪事项涉及次数</span></div>';
+  if (!actives.length) {
+    h += '<div class="empty">暂无数据——新增台账或跟踪事项后自动生成</div>';
+  } else {
+    h += '<table class="tbl"><thead><tr><th>学生</th><th>班级</th><th>台账</th><th>事项</th><th>合计</th></tr></thead><tbody>';
+    actives.forEach(function (x) {
+      h += "<tr><td><b>" + esc(x.name) + "</b></td><td>" + esc(x.cls || "-") + "</td>" +
+        "<td>" + x.logs + " 次</td><td>" + x.todos + " 次</td>" +
+        '<td><span style="font-weight:600">' + (x.logs + x.todos) + "</span></td></tr>";
+    });
+    h += "</tbody></table>";
+  }
+  h += "</div>";
 
   body.innerHTML = h;
 }

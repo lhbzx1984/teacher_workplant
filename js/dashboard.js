@@ -266,7 +266,7 @@ function followUpListHTML() {
   return '<table class="tbl"><thead><tr><th style="width:100px">日期</th><th style="width:80px">类型</th><th>事项</th><th>跟进安排</th><th style="width:70px">操作</th></tr></thead><tbody>' +
     pendings.map(function (l) {
       const names = (l.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
-      return "<tr><td>" + esc(l.date) + "</td><td>" + badge(l.type, l.type === "谈话" ? "blue" : "green") + "</td>" +
+      return "<tr><td>" + esc(l.date) + "</td><td>" + badge(l.type, ledgerTypeColor(l.type)) + "</td>" +
         "<td>" + esc(l.title) + (names ? '<span class="muted">（' + esc(names) + "）</span>" : "") + "</td>" +
         "<td>" + esc(l.followUp) + "</td>" +
         '<td><span class="link" data-log-done="' + l.id + '">完成</span></td></tr>';

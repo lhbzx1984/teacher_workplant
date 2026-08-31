@@ -37,6 +37,16 @@ function examTypeOf(course) {
   return (course && course.examType) || "闭卷考试";
 }
 
+/* 班主任工作台账类型：谈心谈话 / 走访 / 班会 / 活动 + 评奖评优 / 就业 / 贫困生申报 */
+const LOG_TYPES = ["谈话", "走访宿舍", "班会", "活动", "评奖评优", "就业", "贫困生申报", "其他"];
+const LOG_TYPE_COLOR = {
+  "谈话": "blue", "走访宿舍": "green", "班会": "purple", "活动": "amber",
+  "评奖评优": "red", "就业": "teal", "贫困生申报": "purple", "其他": "gray"
+};
+function ledgerTypeColor(type) {
+  return LOG_TYPE_COLOR[type] || "gray";
+}
+
 /* 旧数据迁移：补齐课程缺失字段（slots / examType） */
 function normalizeCourses() {
   (DB.courses || []).forEach(function (c) {
@@ -230,14 +240,25 @@ function calendarItemsOfDate(dateISO, term) {
       go: "settings"
     });
   });
-  /* 班主任跟踪事项：按状态着色（完成=绿 / 未完成=琥珀 / 过期未完成=红），不参与时间三态 */
+  /* 班主任跟踪事项：按状态着色（完成=绿 / 未完成=琥珀 / 过期未完成=红），不参与时间三态；
+     若关联了工作台账条目，类型标签显示台账类型（评奖评优 / 就业 / 贫困生申报…） */
   (DB.todos || []).forEach(function (t) {
     if (t.date !== dateISO) return;
     const done = t.status === "完成";
+    const linked = t.ledgerId ? getLog(t.ledgerId) : null;
     items.push({
-      kind: "todo", ref: t, title: t.title, typeTag: "跟踪事项",
+      kind: "todo", ref: t, title: t.title, typeTag: linked ? linked.type : "跟踪事项",
       start: "", end: "", go: "students/todos",
       color: done ? "green" : (dateISO < todayISO() ? "red" : "amber")
+    });
+  });
+  /* 班主任工作台账（评奖评优 / 就业 / 贫困生申报 / 谈话…）：按类型着色，不参与时间三态 */
+  (DB.logs || []).forEach(function (l) {
+    if (l.date !== dateISO) return;
+    items.push({
+      kind: "ledger", ref: l, title: l.title, typeTag: l.type,
+      start: "", end: "", go: "students/logs",
+      color: ledgerTypeColor(l.type)
     });
   });
   items.sort(function (a, b) { return (parseHM(a.start) || 0) - (parseHM(b.start) || 0); });
@@ -258,6 +279,7 @@ function getEvent(id) {
 /* ===================== 查询助手 ===================== */
 
 function getStudent(id) { return DB.students.find(function (s) { return s.id === id; }) || null; }
+function getLog(id) { return (DB.logs || []).find(function (l) { return l.id === id; }) || null; }
 function getCourse(id) { return DB.courses.find(function (c) { return c.id === id; }) || null; }
 function getCompetition(id) { return DB.competitions.find(function (c) { return c.id === id; }) || null; }
 function getProject(id) { return DB.projects.find(function (p) { return p.id === id; }) || null; }
@@ -481,11 +503,25 @@ function seedDemo() {
     followUp: "10月上旬回访睡眠与出勤情况", done: false
   });
 
+  /* 班主任工作台账：评奖评优 / 就业 / 贫困生申报（跟踪事项可按台账条目选择关联） */
+  const povertyLogId = uid();
+  db.logs.push(
+    { id: povertyLogId, date: "2026-09-03", type: "贫困生申报", studentIds: [ids[1]],
+      title: "贫困生认定申请材料受理", content: "收取王雨桐的认定申请书与佐证材料复印件，材料齐全，拟报学院认定工作组。",
+      followUp: "9月15日查看认定结果公示", done: false },
+    { id: uid(), date: "2026-09-05", type: "评奖评优", studentIds: [ids[0], ids[2]],
+      title: "组织国家奖学金评审推荐", content: "按班级量化考核排名产生 2 名候选人，材料报送学工办。",
+      followUp: "9月10日前报送评审材料", done: false },
+    { id: uid(), date: "2026-09-08", type: "就业", studentIds: [ids[3], ids[4]],
+      title: "2027届毕业生就业意向摸底", content: "逐一登记考研 / 就业 / 考公意向：陈思远倾向秋招，赵婉清计划考研。",
+      followUp: "", done: false }
+  );
+
   /* 班主任跟踪事项：status 仅两种——准备 / 完成 */
   db.todos.push(
     { id: uid(), title: "收齐班委学期工作计划", date: "2026-08-31", status: "准备", note: "各班委周三前提交至学习委员汇总", studentIds: [ids[0], ids[3]] },
     { id: uid(), title: "收缴英语四级考试报名费", date: "2026-09-01", status: "准备", note: "每人 30 元，扫码收款后登记", studentIds: [] },
-    { id: uid(), title: "提交贫困生认定申请材料", date: "2026-09-03", status: "准备", note: "含申请书、佐证材料复印件", studentIds: [ids[1]] },
+    { id: uid(), title: "提交贫困生认定申请材料", date: "2026-09-03", status: "准备", note: "含申请书、佐证材料复印件", studentIds: [ids[1]], ledgerId: povertyLogId },
     { id: uid(), title: "发放军训服装", date: "2026-08-28", status: "完成", note: "按名单发放并签字确认", studentIds: [] }
   );
 
