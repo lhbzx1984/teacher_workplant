@@ -182,12 +182,14 @@ function slotLabel(slot) {
   return "周" + dayCN + " " + (slot.start || "?") + (slot.end ? "-" + slot.end : "") + "（" + (slot.type || "理论") + "）";
 }
 
-/* 某一天的日历条目：当前学期课程时段（按周几匹配）+ 特殊日程，按开始时间排序 */
+/* 某一天的日历条目：当前学期课程时段（按周几匹配，仅在教学周内显示）+ 特殊日程，按开始时间排序 */
 function calendarItemsOfDate(dateISO, term) {
   const items = [];
   const wd = isoWeekday(dateISO);
+  const inTerm = term ? weekNoOfTerm(term, dateISO) != null : true;
   (DB.courses || []).forEach(function (c) {
     if (term && c.termId !== term.id) return;
+    if (!inTerm) return;  // 学期外（含开学前/结课后）不显示任何课程时段
     courseSlotsOf(c).forEach(function (s) {
       if (Number(s.day) !== wd) return;
       items.push({
