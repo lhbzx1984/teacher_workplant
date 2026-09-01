@@ -31,16 +31,16 @@ function renderDashboard(view) {
     statCard("竞赛获奖", totalAwards, "项", "历年累计指导成果") +
     "</div>";
 
-  h += '<div class="card cal-card"><div class="card-head"><div class="card-title">教学日历' +
-    '<small style="font-weight:400;margin-left:6px">月视图 · 课程时段与特殊日程 · 已上 / 进行中 / 未上状态随时间自动刷新</small></div></div>' +
-    '<div id="cal-box">' + calendarMonthHTML() + "</div></div>";
-
   h += '<div class="grid grid-2" style="margin-top:14px">';
   h += '<div class="card"><div class="card-head"><div class="card-title">近期待办</div><span class="muted">未来 30 天</span></div><div class="card-body" id="dash-todos">' + todoListHTML() + "</div></div>";
   h += '<div class="card"><div class="card-head"><div class="card-title">本学期课程</div>' +
     (term ? '<button class="btn btn-light btn-sm" data-go="courses">进入管理</button>' : "") +
     "</div>" + (termCourses.length ? courseMiniTable(termCourses) : '<div class="empty" style="padding:26px">' + (term ? "本学期还没有课程" : "请先在“学期与设置”中创建学期") + "</div>") + "</div>";
   h += "</div>";
+
+  h += '<div class="card cal-card"><div class="card-head"><div class="card-title">教学日历' +
+    '<small style="font-weight:400;margin-left:6px">月视图 · 课程时段与特殊日程 · 已上 / 进行中 / 未上状态随时间自动刷新</small></div></div>' +
+    '<div id="cal-box">' + calendarMonthHTML() + "</div></div>";
 
   h += '<div class="card"><div class="card-head"><div class="card-title">待跟进台账</div><span class="muted">班主任工作 · 谈话 / 走访后续</span></div>' + followUpListHTML() + "</div>";
 
