@@ -111,6 +111,8 @@ document.addEventListener("click", function (e) {
   if (quickAdd) { openQuickAdd(); return; }
   const quickGo = e.target.closest ? e.target.closest("[data-quick-go]") : null;
   if (quickGo) { closeModal(); go(quickGo.getAttribute("data-quick-go")); return; }
+  const guide = e.target.closest ? e.target.closest("[data-action='guide']") : null;
+  if (guide) { openGuide(); return; }
   const backup = e.target.closest ? e.target.closest("[data-action='backup']") : null;
   if (backup) { exportJSONBackup(); }
 });
