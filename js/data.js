@@ -218,11 +218,12 @@ function slotCoversWeek(slot, weekNo, term) {
   return true;
 }
 
-/* 授课时段可读标签：周一 08:00-09:40（理论·1-18周） */
+/* 授课时段可读标签：周一 08:00-09:40 教室A（理论·1-18周） */
 function slotLabel(slot, term) {
   const day = Number(slot.day);
   const dayCN = "一二三四五六日".charAt((day >= 1 && day <= 7 ? day : 1) - 1);
   return "周" + dayCN + " " + (slot.start || "?") + (slot.end ? "-" + slot.end : "") +
+    (slot.room ? " " + slot.room : "") +
     "（" + (slot.type || "理论") + "·" + slotWeeksText(slot, term) + "）";
 }
 
@@ -238,7 +239,7 @@ function calendarItemsOfDate(dateISO, term) {
       if (term && !slotCoversWeek(s, weekNo, term)) return;  // 学期外 / 周范围外 / 单双周不匹配
       items.push({
         kind: "course", ref: c, title: c.name, typeTag: s.type || "理论",
-        start: s.start || "", end: s.end || "", weeksText: slotWeeksText(s, term), go: "course/" + c.id
+        start: s.start || "", end: s.end || "", location: s.room || "", weeksText: slotWeeksText(s, term), go: "course/" + c.id
       });
     });
   });

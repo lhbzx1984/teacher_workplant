@@ -419,6 +419,9 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .cal-item:hover { filter: brightness(.97); }
 .cal-item-time { font-size: 11px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .cal-tag { font-style: normal; font-size: 10px; padding: 1px 5px; border-radius: 4px; color: #fff; }
+/* 地点标签：教室 / 实验室等，随日历条目可见显示（课程时段与特殊日程共用） */
+.cal-loc { font-style: normal; font-size: 10px; color: var(--ink-3); flex: 0 0 auto; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-loc::before { content: "· "; }
 .cal-live { font-size: 10px; color: var(--gold-strong); font-weight: 500; margin-left: auto; }
 .cal-live::before { content: "●"; margin-right: 3px; animation: cal-blink 1.2s infinite; }
 @keyframes cal-blink { 50% { opacity: .15; } }
@@ -448,6 +451,7 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .slot-row select { flex: 0 0 96px; }
 .slot-row select[data-slot-mode] { flex: 0 0 76px; }
 .slot-row input[type="time"] { flex: 1; min-width: 88px; }
+.slot-row input[data-slot-room] { flex: 0 1 130px; min-width: 96px; }
 .slot-weeks { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-3); font-size: 12px; }
 .slot-weeks input { width: 56px; text-align: center; padding: 5px 6px; }
 .slot-dash { color: var(--ink-3); }

@@ -131,6 +131,7 @@ function calDayHTML(dateISO, today, term, monthFirst, monthLast) {
       '<span class="cal-item-time">' + esc(timeTxt) + "</span>" +
       '<span class="cal-item-title">' + (st === "done" && it.kind === "course" ? "✓ " : "") + esc(it.title) + "</span>" +
       '<i class="cal-tag">' + esc(it.typeTag) + "</i>" +
+      (it.location ? '<i class="cal-loc" title="上课地点">' + esc(it.location) + "</i>" : "") +
       (st === "ongoing" ? '<span class="cal-live">进行中</span>' : "") +
       "</div>";
   });

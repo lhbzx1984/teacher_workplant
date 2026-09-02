@@ -106,7 +106,7 @@ function courseForm(course) {
   /* —— 授课时段行编辑器（无 name 属性，避免混入表单数据） —— */
   const rowsBox = $("#slot-rows", overlay);
   const maxWeek = Number(term && term.weeks) || 20;
-  const newSlot = function () { return { type: "理论", day: 1, start: "08:00", end: "09:40", weekStart: 1, weekEnd: maxWeek, weekMode: "all" }; };
+  const newSlot = function () { return { type: "理论", day: 1, start: "08:00", end: "09:40", weekStart: 1, weekEnd: maxWeek, weekMode: "all", room: "" }; };
   let slotList = course ? JSON.parse(JSON.stringify(courseSlotsOf(course))) : [];
   if (!slotList.length) slotList = [newSlot()];
 
@@ -148,6 +148,7 @@ function slotRowHTML(slot, term) {
     '<input type="time" class="input" data-slot-start value="' + esc(slot.start || "") + '">' +
     '<span class="slot-dash">–</span>' +
     '<input type="time" class="input" data-slot-end value="' + esc(slot.end || "") + '">' +
+    '<input type="text" class="input" data-slot-room value="' + esc(slot.room || "") + '" placeholder="教室/实验室" title="上课地点，将同步显示在日历">' +
     '<span class="slot-weeks" title="该时段上课的教学周范围">第' +
     '<input type="number" class="input" data-slot-ws value="' + ws + '" min="1" max="' + maxWeek + '">–' +
     '<input type="number" class="input" data-slot-we value="' + we + '" min="1" max="' + maxWeek + '">周</span>' +
@@ -174,7 +175,8 @@ function readSlotRows(overlay, term) {
       type: $("[data-slot-type]", row).value,
       day: Number($("[data-slot-day]", row).value),
       start: start, end: end,
-      weekStart: ws, weekEnd: we, weekMode: $("[data-slot-mode]", row).value
+      weekStart: ws, weekEnd: we, weekMode: $("[data-slot-mode]", row).value,
+      room: $("[data-slot-room]", row).value.trim()
     });
   });
   return rows;
