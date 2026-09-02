@@ -377,7 +377,7 @@ function renderLogList(body) {
 }
 
 function logForm(log, presetStudentId) {
-  formModal({
+  const overlay = formModal({
     title: log ? "编辑台账" : "新增台账", wide: true,
     body:
       '<div class="form-row">' +
@@ -387,12 +387,7 @@ function logForm(log, presetStudentId) {
       fieldHTML("标题", inputHTML("title", log ? log.title : "", { placeholder: "如：开学以来状态低迷约谈 / 走访松园3栋" }), true) +
       fieldHTML("内容记录", textareaHTML("content", log ? log.content : "", { rows: 5, placeholder: "记录要点、学生反馈、处理措施等" })) +
       fieldHTML("跟进安排", inputHTML("followUp", log ? log.followUp : "", { placeholder: "如：两周后回访出勤情况（留空表示无需跟进）" })) +
-      fieldHTML("涉及学生（可多选）", '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">' +
-        (DB.students.length ? DB.students.map(function (s) {
-          return '<label class="flex" style="gap:6px;font-size:13px;margin:0 0 8px 0"><input type="checkbox" name="stu_' + s.id + '"' +
-            ((log && (log.studentIds || []).indexOf(s.id) >= 0) || s.id === presetStudentId ? " checked" : "") + ">" +
-            esc(s.name) + '<span class="muted">' + esc(s.no || "") + "</span></label>";
-        }).join("") : '<span class="hint">学生池为空</span>') + "</div>"),
+      fieldHTML("涉及学生（可多选）", renderStudentPickerHTML(log, presetStudentId)),
     onSubmit: function (data) {
       if (!data.title.trim()) { toast("请填写标题"); return false; }
       const studentIds = DB.students.filter(function (s) { return data["stu_" + s.id]; }).map(function (s) { return s.id; });
@@ -411,6 +406,43 @@ function logForm(log, presetStudentId) {
       renderApp();
     }
   });
+  /* 全选联动：勾选/取消全选 → 联动所有学生复选框；单项变更 → 同步全选框三态与已选计数 */
+  const allBox = $("[data-log-all]", overlay);
+  if (allBox) {
+    const cntEl = $("[data-log-all-cnt]", overlay);
+    const stuBoxes = function () { return $$('input[type="checkbox"][name^="stu_"]', overlay); };
+    const syncAll = function () {
+      const boxes = stuBoxes();
+      const total = boxes.length;
+      const checked = boxes.filter(function (b) { return b.checked; }).length;
+      allBox.checked = total > 0 && checked === total;
+      allBox.indeterminate = checked > 0 && checked < total;
+      if (cntEl) cntEl.textContent = "已选 " + checked + "/" + total;
+    };
+    syncAll();
+    allBox.addEventListener("change", function () {
+      stuBoxes().forEach(function (b) { b.checked = allBox.checked; });
+      syncAll();
+    });
+    stuBoxes().forEach(function (b) { b.addEventListener("change", syncAll); });
+  }
+}
+
+/* 涉及学生（可多选）HTML：顶部带全选复选框 + 计数，下方逐人复选框 */
+function renderStudentPickerHTML(log, presetStudentId) {
+  const total = DB.students.length;
+  return '<div style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;padding:10px">' +
+    (total ?
+      '<label class="flex" style="gap:6px;font-size:13px;margin:0 0 8px 0;font-weight:600;padding-bottom:8px;border-bottom:1px dashed var(--line)">' +
+        '<input type="checkbox" data-log-all> 全选' +
+        '<span class="muted" data-log-all-cnt style="margin-left:auto;font-weight:400">已选 0/' + total + '</span>' +
+      '</label>' +
+      DB.students.map(function (s) {
+        return '<label class="flex" style="gap:6px;font-size:13px;margin:0 0 8px 0"><input type="checkbox" name="stu_' + s.id + '"' +
+          ((log && (log.studentIds || []).indexOf(s.id) >= 0) || s.id === presetStudentId ? " checked" : "") + ">" +
+          esc(s.name) + '<span class="muted">' + esc(s.no || "") + "</span></label>";
+      }).join("")
+      : '<span class="hint">学生池为空</span>') + "</div>";
 }
 
 /* ---------- 跟踪事项 ---------- */
