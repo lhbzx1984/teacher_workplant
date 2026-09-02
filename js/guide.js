@@ -55,7 +55,7 @@ const GUIDE_STEPS = [
   {
     tag: "第 2 步", title: "课程教学 · 档案与成绩", go: "courses",
     text: [
-      "新建课程档案：设置<b>理论 / 实验学时</b>，按<b>周次与单双周</b>添加授课时段（如实验双周 1-16 周）。",
+      "新建课程档案：设置<b>理论 / 实验 / 实践学时</b>，按<b>周次与单双周</b>添加授课时段（如实验双周 1-16 周）。",
       "课程名单支持<b>粘贴 TSV 一键导入</b>（学号自动去重复用档案池）。",
       "课程详情内可录<b>成绩册</b>（平时 / 期中 / 期末按比例自动加权）与<b>考勤</b>。"
     ],
@@ -64,7 +64,7 @@ const GUIDE_STEPS = [
         '<div class="gdm-course-head gdm-t1"><b>数据结构</b><span>2025 级计科 1 班 · 理论 32 + 实验 16 学时</span></div>' +
         '<div class="gdm-slot gdm-t2"><i class="gdm-dot gdm-dot-blue"></i>周一 08:00-09:40 · 理论 · 1-18 周</div>' +
         '<div class="gdm-slot gdm-t3"><i class="gdm-dot gdm-dot-purple"></i>周三 10:00-12:30 · 实验 · 1-16 周·双周</div>' +
-        '<div class="gdm-slot gdm-t4"><i class="gdm-dot gdm-dot-blue"></i>周五 14:00-15:40 · 理论 · 1-18 周</div>' +
+        '<div class="gdm-slot gdm-t4"><i class="gdm-dot gdm-dot-teal"></i>周四 08:00-11:50 · 实践 · 6-14 周</div>' +
         '<div class="gdm-row gdm-t5">名单 42 人 · <span class="gdm-chip gdm-chip-blue">粘贴 TSV 一键导入</span></div>' +
         '<div class="gdm-row gdm-t6">成绩册：平时 30% + 期中 20% + 期末 50% 自动加权</div>' +
       "</div>"

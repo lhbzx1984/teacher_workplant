@@ -123,7 +123,7 @@ function calDayHTML(dateISO, today, term, monthFirst, monthLast) {
     const st = it.kind === "todo" ? "" : timeStatus(dateISO, it.start, it.end);
     const timeTxt = it.start ? it.start : "全天";
     const fullTime = it.start ? (it.start + (it.end ? "-" + it.end : "")) : "全天";
-    const color = it.color || (it.kind === "course" ? (it.typeTag === "实验" ? "purple" : "blue") : eventTypeColor(it.typeTag));
+    const color = it.color || (it.kind === "course" ? (it.typeTag === "实验" ? "purple" : (it.typeTag === "实践" ? "teal" : "blue")) : eventTypeColor(it.typeTag));
     const loc = it.location ? " · " + it.location : "";
     const wk = it.weeksText ? " · " + it.weeksText : "";
     h += '<div class="cal-item tag-' + color + (st ? " cal-" + st : "") + '" data-cal-go="' + it.go + '" ' +

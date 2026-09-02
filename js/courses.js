@@ -65,7 +65,7 @@ function courseForm(course) {
       '<div id="slot-rows"></div>' +
       '<div class="flex" style="margin-bottom:13px">' +
       '<button type="button" class="btn btn-light btn-sm" id="slot-add">＋ 添加时段</button>' +
-      '<span class="hint">同一门课可添加多个时段，类型分「理论 / 实验」</span></div>' +
+      '<span class="hint">同一门课可添加多个时段，类型分「理论 / 实验 / 实践」</span></div>' +
       '<div class="section-title" style="margin-top:4px">成绩权重（%）</div>' +
       '<div class="form-row">' +
       fieldHTML("平时", inputHTML("w1", course ? course.weights.regular : 30, { type: "number", attrs: ' min="0" max="100"' })) +
@@ -140,7 +140,7 @@ function slotRowHTML(slot, term) {
   const mode = slot.weekMode || "all";
   return '<div class="slot-row">' +
     '<select class="input" data-slot-type>' +
-    ["理论", "实验"].map(function (t) { return '<option' + ((slot.type || "理论") === t ? " selected" : "") + ">" + t + "</option>"; }).join("") +
+    ["理论", "实验", "实践"].map(function (t) { return '<option' + ((slot.type || "理论") === t ? " selected" : "") + ">" + t + "</option>"; }).join("") +
     "</select>" +
     '<select class="input" data-slot-day>' +
     [1, 2, 3, 4, 5, 6, 7].map(function (d) { return '<option value="' + d + '"' + (day === d ? " selected" : "") + ">周" + "一二三四五六日".charAt(d - 1) + "</option>"; }).join("") +
@@ -244,7 +244,7 @@ function renderCourseDetail(view, courseId) {
   if (slots.length) {
     h += '<div class="card" style="padding:10px 18px"><div class="flex">' +
       '<span class="muted" style="flex:0 0 auto">授课时段</span>' +
-      slots.map(function (s) { return badge(slotLabel(s, term), s.type === "实验" ? "purple" : "blue"); }).join("") +
+      slots.map(function (s) { return badge(slotLabel(s, term), s.type === "实验" ? "purple" : (s.type === "实践" ? "teal" : "blue")); }).join("") +
       '<span class="muted" style="flex:0 0 auto">同步显示在仪表盘教学日历</span></div></div>';
   }
 
@@ -588,7 +588,7 @@ function attendanceForm(course, session) {
     body:
       '<div class="form-row">' +
       fieldHTML("上课日期", inputHTML("date", session ? session.date : todayISO(), { type: "date" }), true) +
-      fieldHTML("课型", selectHTML("type", session ? session.type : "理论", ["理论", "实验"])) +
+      fieldHTML("课型", selectHTML("type", session ? session.type : "理论", ["理论", "实验", "实践"])) +
       "</div>" +
       '<table class="tbl"><thead><tr><th>学号</th><th>姓名</th><th>状态</th></tr></thead><tbody>' +
       students.map(function (s) {
