@@ -52,30 +52,87 @@ function isValidISO(s) {
   return mo >= 1 && mo <= 12 && d >= 1 && d <= 31;
 }
 
-/* 金额抽取：①锚点词就近数字 ②¥ 前缀取最大 ③「N 元」取最大 */
+/* 中文大写金额 → 数字：「柒佰陆拾贰圆整」→762、「玖佰伍拾陆圆伍角整」→956.5
+   为什么值得做：中式发票的大写金额是法定要素，几乎必有；而且汉字比数字稳健得多——
+   汉字被错表解码会立刻变成乱码（容易发现、也容易被可读性评分排除），
+   数字被错表解码后**仍然是数字**，肉眼和评分都分辨不出来。
+   所以小写金额因字体子集缺字而解丢时，大写就是最可靠的兜底。 */
+const RMB_UPPER_CHARS = "零〇壹贰叁肆伍陆柒捌玖拾佰仟万亿圆元角分整正";
+const RMB_DIGITS = { "零": 0, "〇": 0, "壹": 1, "贰": 2, "叁": 3, "肆": 4, "伍": 5, "陆": 6, "柒": 7, "捌": 8, "玖": 9 };
+const RMB_SECTION = { "拾": 10, "佰": 100, "仟": 1000 };
+const RMB_BIG = { "万": 1e4, "亿": 1e8 };
+
+function rmbUpperToNumber(str) {
+  if (!str) return null;
+  const s = String(str).replace(/\s+/g, "");
+  /* 只认「大写数字 + 圆/元」的组合：必须带圆或元才成立，
+     否则「一次性」这类普通汉字里的「一」会被误判成金额。 */
+  const m = s.match(new RegExp("[" + RMB_UPPER_CHARS + "]{2,}"));
+  if (!m) return null;
+  const t = m[0];
+  const cut = t.search(/[圆元]/);
+  if (cut < 0) return null;
+  const head = t.slice(0, cut);       /* 圆/元 之前的整数部分 */
+  const tail = t.slice(cut + 1);      /* 角、分 */
+  let intVal = 0, section = 0, cur = 0, seen = false;
+  for (let i = 0; i < head.length; i++) {
+    const ch = head[i];
+    if (RMB_DIGITS[ch] != null) { cur = RMB_DIGITS[ch]; seen = true; continue; }
+    if (RMB_SECTION[ch] != null) { if (cur === 0) cur = 1; section += cur * RMB_SECTION[ch]; cur = 0; seen = true; continue; }
+    if (RMB_BIG[ch] != null) { section += cur; intVal += section * RMB_BIG[ch]; section = 0; cur = 0; continue; }
+  }
+  intVal += section + cur;
+  if (!seen) return null;
+  let dec = 0;
+  const jm = tail.match(/([零〇壹贰叁肆伍陆柒捌玖])\s*角/);
+  if (jm) dec += RMB_DIGITS[jm[1]] / 10;
+  const fm = tail.match(/([零〇壹贰叁肆伍陆柒捌玖])\s*分/);
+  if (fm) dec += RMB_DIGITS[fm[1]] / 100;
+  const v = intVal + dec;
+  return (isFinite(v) && v > 0 && v < 200000) ? Math.round(v * 100) / 100 : null;
+}
+
+/* 金额抽取：①锚点词就近数字 ②¥ 前缀取最大 ③大写反推 ④「N 元」取最大
+
+   优先级不是一个死顺序，而是「证据强弱」：
+   - 锚点词（「（小写）¥553.00」）是发票上显式标注的字段，证据最强，一旦命中即采信；
+   - ¥ 取最大值是启发式猜测，可能与明细行冲突，需与大写交叉校验；
+   - 大写金额是法定金额，小写缺失或不可信时兜底。 */
 function pickAmountFromText(text) {
   const flat = normText(text);
   if (!flat) return null;
   /* 千分位优先（1,280.00），其次普通小数（553.00）；逗号一律按千分位处理 */
   const N = "(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d{1,7}(?:\\.\\d{1,2})?)";
+  let anchored = null, bySymbol = null;
 
   /* ① 锚点词就近数字：锚点与数字间可夹货币符号、冒号、空格（如 "Amount: CNY 1,280.00"）。
      逐个候选试解——第一个匹配可能落在发票号等超长数字上（被 toMoney 判为无效），
      此时应继续往后找，而不是放弃锚点分支。 */
   let re1 = new RegExp(AMOUNT_ANCHOR + "[^0-9]{0,20}" + MONEY_PREFIX_OPT + N, "gi"), m1;
-  while ((m1 = re1.exec(flat))) { const v = toMoney(m1[1]); if (v) return v; }
+  while ((m1 = re1.exec(flat))) { const v = toMoney(m1[1]); if (v) { anchored = v; break; } }
 
   /* ② 货币符号后取最大值：¥1280.00 / CNY 1,280.00 / RMB 88.50 */
-  const cands = [];
-  let re = new RegExp(MONEY_PREFIX + N, "gi"), mm;
+  let re = new RegExp(MONEY_PREFIX + N, "gi"), mm, cands = [];
   while ((mm = re.exec(flat))) { const v = toMoney(mm[1]); if (v) cands.push(v); }
-  if (cands.length) return Math.max.apply(Math, cands);
+  if (cands.length) bySymbol = Math.max.apply(Math, cands);
 
+  /* ③ 中文大写金额反推 */
+  const upper = rmbUpperToNumber(flat);
+
+  /* 显式字段最可信，直接采信 */
+  if (anchored != null) return anchored;
+  /* 只有启发式结果时与大写交叉校验：一致取小写，冲突取大写（法定金额为准） */
+  if (bySymbol != null) {
+    if (upper == null || Math.abs(upper - bySymbol) <= 0.01) return bySymbol;
+    return upper;
+  }
+  if (upper != null) return upper;
+
+  /* ④ 「N 元」取最大 */
+  cands = [];
   re = new RegExp(N + "\\s*元", "g");
   while ((mm = re.exec(flat))) { const v = toMoney(mm[1]); if (v) cands.push(v); }
-  if (cands.length) return Math.max.apply(Math, cands);
-
-  return null;
+  return cands.length ? Math.max.apply(Math, cands) : null;
 }
 
 /* 日期抽取：2026年9月1日 / 2026-09-01 / 2026.09.01 / 20260901 */
@@ -443,32 +500,77 @@ function pdfContentText(src, cmaps, fontCmapLists) {
 }
 
 /* 建立「字体资源名 → 该字体 ToUnicode 表所在对象号」的候选关联。
-   光靠可读性盲猜会在字符集相近时选错（数字串被汉字表解成中文），
-   所以先用资源字典把候选圈定到「这个字体可能用的那几张表」。
-   推导链：/Font << /F1 9 0 R >> → 字体对象 9 的 /ToUnicode 12 0 R → CMap 在对象 12。 */
-function pdfFontCmapCandidates(latin) {
+   推导链：/Font << /F1 9 0 R >> → 字体对象 9 的 /ToUnicode 12 0 R → CMap 在对象 12。
+
+   为什么不能靠可读性盲猜：字符集相近时评分根本分辨不出来。机票发票里
+   JF3(CourierNew) 的 CID 是 3–16，JF1(KaiTi) 的 CID 恰好也是 3–16——
+   两张表命中率都是 100%，而错表解出来「电子发子票票票票（普票电票通通通）」
+   还是通顺汉字，可读性满分。唯一可靠的依据就是资源字典里写明的关联。
+
+   objBodies 来自 ObjStm 展开：字体字典常常不在顶层，缺了它就关联不上。
+   同一资源名（如 JF1）在不同资源字典里可能指向不同字体，故存为候选数组。 */
+function pdfFontCmapCandidates(latin, objBodies) {
   const fontObjToCmap = {};
-  let re = /(\d+)\s+\d+\s+obj\b([\s\S]{0,2000}?)endobj/g, m;
-  while ((m = re.exec(latin))) {
-    const tu = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(m[2]);
-    if (tu) fontObjToCmap[m[1]] = tu[1];
-  }
+  const bodies = [];
+  const take = function (num, body) {
+    if (!body || num == null) return;
+    const key = String(num);
+    bodies.push({ num: key, body: body });
+    const tu = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(body);
+    if (tu) fontObjToCmap[key] = tu[1];
+  };
+  /* 顶层对象：N G obj … endobj */
+  let re = /(\d+)\s+\d+\s+obj\b([\s\S]{0,3000}?)endobj/g, m;
+  while ((m = re.exec(latin))) take(m[1], m[2]);
+  /* 对象流内部对象：裸字典，只有展开后才能拿到 */
+  (objBodies || []).forEach(function (o) { take(o.num, o.body); });
+
   const cands = {};
-  let re2 = /\/Font\s*<<([^>]*)>>/g, m2;
-  while ((m2 = re2.exec(latin))) {
-    let re3 = /\/([^\s/<>]+)\s+(\d+)\s+\d+\s+R/g, m3;
-    while ((m3 = re3.exec(m2[1]))) {
-      const cmapObj = fontObjToCmap[m3[2]];
-      if (!cmapObj) continue;
-      const k = m3[1];
-      if (!cands[k]) cands[k] = [];
-      if (cands[k].indexOf(cmapObj) < 0) cands[k].push(cmapObj);
+  bodies.forEach(function (b) {
+    let re2 = /\/Font\s*<<([^>]*)>>/g, m2;
+    while ((m2 = re2.exec(b.body))) {
+      let re3 = /\/([^\s/<>]+)\s+(\d+)\s+\d+\s+R/g, m3;
+      while ((m3 = re3.exec(m2[1]))) {
+        const cmapObj = fontObjToCmap[m3[2]];
+        if (!cmapObj) continue;
+        const k = m3[1];
+        if (!cands[k]) cands[k] = [];
+        if (cands[k].indexOf(cmapObj) < 0) cands[k].push(cmapObj);
+      }
     }
-  }
+  });
   return cands;
 }
 
 /* ===================== PDF 对象与流收集 ===================== */
+
+/* 展开 ObjStm（压缩对象流，PDF 1.5+）。
+   为什么必须做：ObjStm 里的对象**不是** "N G obj … endobj" 形式，而是
+   「编号 偏移」表 + 一串裸字典，按 /First 偏移依次排列。字体字典极爱藏在这里
+   （机票发票就是如此：obj4/7/10/21 全在 obj36 里）。不展开就推不出
+   「资源名 → 字体对象 → ToUnicode」，只能退化成全局盲猜编码表，
+   于是金额段被别的字体表解成汉字乱码，数字无声消失。
+   返回 [{num, body}]，body 为该对象的原始文本（含字典）。 */
+function expandObjStm(dict, data) {
+  const mn = /\/N\s+(\d+)/.exec(dict || "");
+  const mf = /\/First\s+(\d+)/.exec(dict || "");
+  if (!mn || !mf) return [];
+  const latin = bytesToLatin1(data);
+  const count = Number(mn[1]), base = Number(mf[1]);
+  if (!(count > 0) || !(base > 0) || base >= latin.length) return [];
+  const nums = (latin.slice(0, base).match(/\d+/g) || []).map(Number);
+  const pairs = [];
+  for (let i = 0; i + 1 < nums.length && pairs.length < count; i += 2) pairs.push([nums[i], nums[i + 1]]);
+  const out = [];
+  for (let i = 0; i < pairs.length; i++) {
+    const start = base + pairs[i][1];
+    const end = i + 1 < pairs.length ? base + pairs[i + 1][1] : latin.length;
+    if (start < latin.length && end > start) {
+      out.push({ num: String(pairs[i][0]), body: latin.slice(start, Math.min(end, latin.length)) });
+    }
+  }
+  return out;
+}
 
 /* 定位所有 "N G obj <<dict>> stream ... endstream"，返回 [{num, dict, data}]。
    dict 部分用「不含 endobj / stream」的惰性匹配（tempered token）限定，
@@ -492,23 +594,30 @@ function pdfStreamChunks(bytes, latin) {
 }
 
 /* 递归收集流：ObjStm（PDF 1.5+ 压缩对象）解压后内部仍是 "N G obj ... endobj" 序列，
-   展开后继续查找，因此嵌套一层也能取到页面内容流。depth 防止异常文件导致死循环。 */
-function collectPdfStreams(bytes, latin, depth, done) {
+   展开后继续查找，因此嵌套一层也能取到页面内容流。depth 防止异常文件导致死循环。
+   objs 为共享累加器：ObjStm 内部对象（多数字体字典）单独用 expandObjStm 切出，
+   因为那部分内容并不符合 "N G obj" 形态，递归扫描找不到它们。 */
+function collectPdfStreams(bytes, latin, depth, done, objs) {
+  objs = objs || [];
   const chunks = pdfStreamChunks(bytes, latin);
   const out = [];
   let i = 0;
   const step = function () {
-    if (i >= chunks.length) { done(out); return; }
+    if (i >= chunks.length) { done(out, objs); return; }
     const c = chunks[i++];
     const flate = /\/FlateDecode/.test(c.dict);
     const objstm = /\/ObjStm/.test(c.dict);
     const proceed = function (data) {
-      if (objstm && data && data.length && depth < 3) {
-        collectPdfStreams(data, bytesToLatin1(data), depth + 1, function (list) {
-          out.push.apply(out, list);
-          step();
-        });
-        return;
+      if (objstm && data && data.length) {
+        /* 无论深度是否用尽，都先把内部对象收走——字体关联只靠这一份 */
+        expandObjStm(c.dict, data).forEach(function (o) { objs.push(o); });
+        if (depth < 3) {
+          collectPdfStreams(data, bytesToLatin1(data), depth + 1, function (list) {
+            out.push.apply(out, list);
+            step();
+          }, objs);
+          return;
+        }
       }
       out.push({ num: c.num, dict: c.dict, data: data || c.data });
       step();
@@ -527,7 +636,7 @@ function extractPdfText(file) {
       fr.onload = function () {
         try {
           const bytes = new Uint8Array(fr.result);
-          collectPdfStreams(bytes, bytesToLatin1(bytes), 0, function (list) {
+          collectPdfStreams(bytes, bytesToLatin1(bytes), 0, function (list, objBodies) {
             try {
               /* 两阶段：先把所有 ToUnicode 表收齐，再解码内容流——
                  CMap 对象可能排在任何内容流之后，边扫边解会漏表。
@@ -549,8 +658,9 @@ function extractPdfText(file) {
                 if (!/\b(?:BT|Tj|TJ|Td|TD|Tm)\b/.test(latin)) return;
                 contents.push(latin);
               });
-              /* 资源字典 → 每个字体的候选表（先把对象号换成表本身） */
-              const fontObjCands = pdfFontCmapCandidates(bytesToLatin1(bytes));
+              /* 资源字典 → 每个字体的候选表（先把对象号换成表本身）。
+                 字体字典可能藏在 ObjStm 里，故必须带上 objBodies。 */
+              const fontObjCands = pdfFontCmapCandidates(bytesToLatin1(bytes), objBodies);
               const fontCmapLists = {};
               Object.keys(fontObjCands).forEach(function (k) {
                 const arr = [];
