@@ -174,17 +174,17 @@ function workbookXml(sheetName) {
 }
 
 /* ---------- 样式表 ----------
-   字体：0=宋体11  1=宋体18粗  2=宋体14粗  3=宋体12
+   字体：0=宋体12  1=宋体18粗  2=宋体14粗  3=宋体11
    边框：0=无 1=四周细 2=仅下 3=左上下 4=右上下 5=仅上下
    xf 索引见 XFS 常量说明                                        */
 const STYLES_XML =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
   '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
   '<fonts count="4">' +
-  '<font><sz val="11"/><name val="\u5b8b\u4f53"/></font>' +
+  '<font><sz val="12"/><name val="\u5b8b\u4f53"/></font>' +
   '<font><b/><sz val="18"/><name val="\u5b8b\u4f53"/></font>' +
   '<font><b/><sz val="14"/><name val="\u5b8b\u4f53"/></font>' +
-  '<font><sz val="12"/><name val="\u5b8b\u4f53"/></font>' +
+  '<font><sz val="11"/><name val="\u5b8b\u4f53"/></font>' +
   "</fonts>" +
   '<fills count="2"><fill><patternFill patternType="none"/></fill>' +
   '<fill><patternFill patternType="gray125"/></fill></fills>' +
@@ -204,16 +204,16 @@ const STYLES_XML =
   '<cellXfs count="12">' +
   /* 0 默认 */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
   /* 1 大标题：18 粗 · 居中 */ '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
-  /* 2 日期行：14 粗 · 右对齐 · 下框 */ '<xf numFmtId="0" fontId="2" fillId="0" borderId="2" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>' +
-  /* 3 宋体12 · 居中 · 四周框 */ '<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
-  /* 4 宋体12 · 居中 · 自动换行 · 四周框 */ '<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
-  /* 5 宋体12 · 居中 · 换行 · 左上下框（金额大写格） */ '<xf numFmtId="0" fontId="3" fillId="0" borderId="3" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
-  /* 6 宋体12 · 垂直居中 · 右上下框（小写金额格） */ '<xf numFmtId="0" fontId="3" fillId="0" borderId="4" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
+  /* 2 日期行：12 · 右对齐 · 下框（模板日期行为常规字号） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>' +
+  /* 3 宋体12 · 居中 · 四周框 */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +
+  /* 4 宋体12 · 居中 · 自动换行 · 四周框 */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+  /* 5 宋体12 · 居中 · 换行 · 四周框（金额大写格） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' +
+  /* 6 宋体12 · 垂直居中 · 四周框（小写金额格） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>' +
   /* 7 默认字 · 右上下框（合并区右端） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="4" xfId="0" applyBorder="1"/>' +
   /* 8 默认字 · 下框（表头日期行其余列） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="2" xfId="0" applyBorder="1"/>' +
   /* 9 默认字 · 上下框（合并区中段） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="5" xfId="0" applyBorder="1"/>' +
-  /* 10 宋体12 · 四周框 · 不设对齐（签字格） */ '<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>' +
-  /* 11 宋体12 · 水平居中 · 四周框 */ '<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>' +
+  /* 10 宋体12 · 四周框 · 不设对齐（签字格） */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>' +
+  /* 11 宋体12 · 水平居中 · 四周框 */ '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>' +
   "</cellXfs>" +
   '<cellStyles count="1"><cellStyle name="\u5e38\u89c4" xfId="0" builtinId="0"/></cellStyles>' +
   "</styleSheet>";

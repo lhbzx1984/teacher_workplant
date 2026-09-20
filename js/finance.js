@@ -161,40 +161,40 @@ function buildFundRequestSheet(f) {
       ] },
       { cells: [
         { c: 1, s: 2, v: dateLine },
-        { c: 2, s: 8 }, { c: 3, s: 8 }, { c: 4, s: 8 }, { c: 5, s: 8 }, { c: 6, s: 8 }
+        { c: 2, s: 3 }, { c: 3, s: 3 }, { c: 4, s: 3 }, { c: 5, s: 3 }, { c: 6, s: 3 }
       ] },
       { cells: [
         { c: 1, s: 3, v: "\u90e8\u95e8" },
-        { c: 2, s: 3, v: f.dept }, { c: 3, s: 7 },
+        { c: 2, s: 3, v: f.dept }, { c: 3, s: 3 },
         { c: 4, s: 3, v: "\u7c7b\u522b" },
-        { c: 5, s: 3, v: checkLine(["\u501f\u6b3e", "\u62a5\u9500"], f.category) + "  " }, { c: 6, s: 7 }
+        { c: 5, s: 3, v: checkLine(["\u501f\u6b3e", "\u62a5\u9500"], f.category) + "  " }, { c: 6, s: 3 }
       ] },
       { cells: [
         { c: 1, s: 3, v: "\u652f\u4ed8\u4e8b\u7531" },
         { c: 2, s: 4, v: f.reason },
-        { c: 3, s: 9 }, { c: 4, s: 9 }, { c: 5, s: 9 }, { c: 6, s: 7 }
+        { c: 3, s: 3 }, { c: 4, s: 3 }, { c: 5, s: 3 }, { c: 6, s: 3 }
       ] },
       { cells: [
         { c: 1, s: 3, v: "\u652f\u4ed8\u65b9\u5f0f" },
         { c: 2, s: 3, v: checkLine(["\u73b0\u91d1", "\u652f\u7968", "\u7535\u6c47", "\u5176\u4ed6"], f.method) },
-        { c: 3, s: 9 }, { c: 4, s: 9 }, { c: 5, s: 9 }, { c: 6, s: 7 }
+        { c: 3, s: 3 }, { c: 4, s: 3 }, { c: 5, s: 3 }, { c: 6, s: 3 }
       ] },
       { cells: [
         { c: 1, s: 3, v: "\u5408\u540c(\u9879\u76ee)\u7f16\u53f7\u53ca\u540d\u79f0" },
-        { c: 2, s: 4, v: f.project }, { c: 3, s: 7 },
+        { c: 2, s: 4, v: f.project }, { c: 3, s: 3 },
         { c: 4, s: 3, v: "\u6536\u6b3e\u5355\u4f4d\u540d\u79f0" },
-        { c: 5, s: 3, v: f.payee }, { c: 6, s: 7 }
+        { c: 5, s: 3, v: f.payee }, { c: 6, s: 3 }
       ] },
       { cells: [
         { c: 1, s: 3, v: "\u6536\u6b3e\u5355\u4f4d\u5f00\u6237\u94f6\u884c" },
-        { c: 2, s: 11, v: f.bank }, { c: 3, s: 7 },
+        { c: 2, s: 11, v: f.bank }, { c: 3, s: 3 },
         { c: 4, s: 3, v: "\u6536\u6b3e\u5355\u4f4d\u94f6\u884c\u8d26\u53f7" },
-        { c: 5, s: 11, v: f.account }, { c: 6, s: 7 }
+        { c: 5, s: 11, v: f.account }, { c: 6, s: 3 }
       ] },
       { cells: [
         { c: 1, s: 3, v: "\u91d1\u989d" },
         { c: 2, s: 5, v: rmbUpperLine(amount) },
-        { c: 3, s: 9 }, { c: 4, s: 9 }, { c: 5, s: 9 },
+        { c: 3, s: 3 }, { c: 4, s: 3 }, { c: 5, s: 3 },
         { c: 6, s: 6, v: moneyLine }
       ] },
       { cells: [
