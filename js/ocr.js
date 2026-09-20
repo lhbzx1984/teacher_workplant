@@ -59,9 +59,11 @@ function pickAmountFromText(text) {
   /* 千分位优先（1,280.00），其次普通小数（553.00）；逗号一律按千分位处理 */
   const N = "(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?|\\d{1,7}(?:\\.\\d{1,2})?)";
 
-  /* ① 锚点词就近数字：锚点与数字间可夹货币符号、冒号、空格（如 "Amount: CNY 1,280.00"） */
-  let m = flat.match(new RegExp(AMOUNT_ANCHOR + "[^0-9]{0,20}" + MONEY_PREFIX_OPT + N, "i"));
-  if (m) { const v = toMoney(m[1]); if (v) return v; }
+  /* ① 锚点词就近数字：锚点与数字间可夹货币符号、冒号、空格（如 "Amount: CNY 1,280.00"）。
+     逐个候选试解——第一个匹配可能落在发票号等超长数字上（被 toMoney 判为无效），
+     此时应继续往后找，而不是放弃锚点分支。 */
+  let re1 = new RegExp(AMOUNT_ANCHOR + "[^0-9]{0,20}" + MONEY_PREFIX_OPT + N, "gi"), m1;
+  while ((m1 = re1.exec(flat))) { const v = toMoney(m1[1]); if (v) return v; }
 
   /* ② 货币符号后取最大值：¥1280.00 / CNY 1,280.00 / RMB 88.50 */
   const cands = [];
@@ -100,15 +102,21 @@ function pickKindFromText(text) {
   return best;
 }
 
-/* 票号抽取：车次（G/D/K/Z/T/C 开头）或发票号码 */
+/* 票号抽取：车次（G/D/K/Z/T/C 开头）或发票号码。
+   中文标签常被 PDF 拆成单字（"发 票 号 码 ："），故额外准备一份去空格副本用于匹配。 */
 function pickTicketNoFromText(text) {
   const flat = normText(text);
   if (!flat) return null;
   let m = flat.match(/(?:^|[^A-Za-z0-9])([GDKZTC]\d{1,4})(?![0-9])/);
   if (m) return m[1];
-  m = flat.match(/发票号码[^0-9]{0,8}(\d{8,20})/);
+  const tight = flat.replace(/\s+/g, "");
+  m = tight.match(/发票号码[^0-9]{0,8}(\d{8,20})/) || flat.match(/发票号码[^0-9]{0,8}(\d{8,20})/);
   if (m) return m[1];
-  m = flat.match(/(?:发票号|票据号|No\.?|NO\.?)[^0-9]{0,6}(\d{6,20})/);
+  m = tight.match(/(?:发票号|票据号|No\.?|NO\.?)[^0-9]{0,6}(\d{6,20})/);
+  if (m) return m[1];
+  /* 兜底：数电票（电子发票）号码固定 20 位，且标签常与数值分开渲染，
+     靠关键词抓不到时，用「独立出现的 20 位数字」反推。 */
+  m = flat.match(/(?:^|[^0-9])(\d{20})(?![0-9])/);
   if (m) return m[1];
   return null;
 }
@@ -271,13 +279,16 @@ function hexToBytes(h) {
   return out;
 }
 
-/* 可读性打分：可打印字符（含 CJK 与 Latin-1 补充区）占比 */
+/* 可读性打分：可打印字符（含 CJK 与 Latin-1 补充区）占比。
+   注意 U+FFFF 与 U+FFFD 是 PDF 的 .notdef 占位（CMap 里常写作 <0000> <FFFF>），
+   必须算作不可读——否则「1 字节解码」靠 .notdef 填满也能拿满分，会盖过正确的 2 字节解码。 */
 function readableScore(s) {
   if (!s) return 0;
   let good = 0;
   for (let i = 0; i < s.length; i++) {
     const c = s.charCodeAt(i);
-    if (c === 0x20 || (c >= 0x30 && c <= 0x7e) || c >= 0xa0) good++;
+    if (c === 0xFFFF || c === 0xFFFD) continue;
+    if (c === 0x20 || (c >= 0x30 && c <= 0x7e) || (c >= 0xa0 && c <= 0xFFFE)) good++;
   }
   return good / s.length;
 }
@@ -341,12 +352,131 @@ function cleanPdfText(s) {
     .trim();
 }
 
+/* ---------------------------------------------------------------
+   按字体分别选 CMap —— 中文电子发票能否读对，全看这一步
+   ---------------------------------------------------------------
+   嵌入子集字体的内容流里存的是**字形索引（CID）**，且每个字体有自己
+   独立的 Identity CMap。同一个 CID，在 A 字体可能是「电」、在 B 字体
+   可能是「2」——CID 编码空间是「每字体一套」，不是全局一套。
+
+   所以绝不能把所有 ToUnicode 表合并成一张：合并时后面字体的映射会
+   覆盖前面字体的同名 key（1→电 被 1→2 顶掉），解码结果就是满屏乱码。
+
+   做法：扫描内容流时跟踪 /Fx … Tf 的字体切换，把文本串按字体分段，
+   再为每个字体「试解」全部候选 CMap，取可读性最高的那张。
+   这样无需解析资源字典也能自适应，且表单/页面各自独立、互不干扰。 */
+
+/* CID 命中率：按 2 字节分组，统计能在表中查到映射的比例。
+   子集字体的表只覆盖自己用到的那几个字形，张冠李戴时命中率会明显掉下来。 */
+function cmapCoverage(bytes, cmap) {
+  if (!cmap) return 0;
+  let hit = 0, total = 0;
+  for (let i = 0; i + 1 < bytes.length; i += 2) {
+    const cid = (bytes[i] << 8) | bytes[i + 1];
+    total++;
+    const mapped = cmap[cid];
+    if (mapped != null && mapped !== "") hit++;
+  }
+  return total ? hit / total : 0;
+}
+
+/* 为一个字体的聚合字节挑最佳 CMap：**先比 CID 命中率，再比可读性**。
+   不能只看可读性——「26952000003175418386」这样的数字串和一堆汉字
+   都能拿满分，命中率才是区分「这表是不是给这个字体的」的硬指标。 */
+function pickBestCmap(bytes, cmaps) {
+  if (!bytes || !bytes.length) return null;
+  if (!cmaps || !cmaps.length) return null;
+  let bestMap = cmaps[0], bestKey = -1;
+  cmaps.forEach(function (cm) {
+    const sc = cmapCoverage(bytes, cm) * 1000 + readableScore(decodeGlyphBytes(bytes, cm));
+    if (sc > bestKey) { bestKey = sc; bestMap = cm; }
+  });
+  return bestMap;
+}
+
+/* 把同一字体的若干字节片段拼成一段（样本越多，选表越准） */
+function joinBytes(list) {
+  let total = 0;
+  list.forEach(function (b) { total += b.length; });
+  const out = new Uint8Array(total);
+  let p = 0;
+  list.forEach(function (b) { out.set(b, p); p += b.length; });
+  return out;
+}
+
+/* 解析一段内容流：按 Tf 切段 → 每字体选表 → 解码拼接。
+   fontCmapLists 是「字体名 → 该字体的候选 CMap 表」，由资源字典推导；
+   拿不到时退回候选全集。 */
+function pdfContentText(src, cmaps, fontCmapLists) {
+  const s = expandTJArrays(src);
+  /* 字体切换 /Name <size> Tf；文本串 <hex> Tj 与 (lit) Tj（' 与 " 同样是文本输出） */
+  const re = /\/([\w.\-]+)\s+[\d.]+\s+Tf|<([0-9A-Fa-f\s]*)>\s*(?:Tj|'|")|\(((?:\\.|[^\\()]){0,400})\)\s*(?:Tj|'|")/g;
+  const segs = [];
+  let cur = null, m;
+  while ((m = re.exec(s))) {
+    if (m[1] != null) { cur = m[1]; continue; }
+    if (m[2] != null) segs.push({ font: cur || "*", hex: m[2] });
+    else if (m[3] != null) segs.push({ font: cur || "*", lit: m[3] });
+  }
+  if (!segs.length) return "";
+
+  /* 按字体聚合字节，为每个字体选出最合适的那张表 */
+  const byFont = {};
+  segs.forEach(function (g) {
+    if (g.hex == null) return;
+    const b = hexToBytes(g.hex);
+    if (!b.length) return;
+    (byFont[g.font] || (byFont[g.font] = [])).push(b);
+  });
+  const best = {};
+  Object.keys(byFont).forEach(function (k) {
+    const cand = (fontCmapLists && fontCmapLists[k]) || null;
+    best[k] = pickBestCmap(joinBytes(byFont[k]), cand && cand.length ? cand : cmaps);
+  });
+
+  let out = "";
+  segs.forEach(function (g) {
+    if (g.hex != null) out += decodeGlyphBytes(hexToBytes(g.hex), best[g.font]) + " ";
+    else if (g.lit != null) out += unescapePdfString(g.lit) + " ";
+  });
+  return cleanPdfText(out);
+}
+
+/* 建立「字体资源名 → 该字体 ToUnicode 表所在对象号」的候选关联。
+   光靠可读性盲猜会在字符集相近时选错（数字串被汉字表解成中文），
+   所以先用资源字典把候选圈定到「这个字体可能用的那几张表」。
+   推导链：/Font << /F1 9 0 R >> → 字体对象 9 的 /ToUnicode 12 0 R → CMap 在对象 12。 */
+function pdfFontCmapCandidates(latin) {
+  const fontObjToCmap = {};
+  let re = /(\d+)\s+\d+\s+obj\b([\s\S]{0,2000}?)endobj/g, m;
+  while ((m = re.exec(latin))) {
+    const tu = /\/ToUnicode\s+(\d+)\s+\d+\s+R/.exec(m[2]);
+    if (tu) fontObjToCmap[m[1]] = tu[1];
+  }
+  const cands = {};
+  let re2 = /\/Font\s*<<([^>]*)>>/g, m2;
+  while ((m2 = re2.exec(latin))) {
+    let re3 = /\/([^\s/<>]+)\s+(\d+)\s+\d+\s+R/g, m3;
+    while ((m3 = re3.exec(m2[1]))) {
+      const cmapObj = fontObjToCmap[m3[2]];
+      if (!cmapObj) continue;
+      const k = m3[1];
+      if (!cands[k]) cands[k] = [];
+      if (cands[k].indexOf(cmapObj) < 0) cands[k].push(cmapObj);
+    }
+  }
+  return cands;
+}
+
 /* ===================== PDF 对象与流收集 ===================== */
 
-/* 定位所有 "N G obj <<dict>> stream ... endstream"，返回 [{dict, data}] */
+/* 定位所有 "N G obj <<dict>> stream ... endstream"，返回 [{num, dict, data}]。
+   dict 部分用「不含 endobj / stream」的惰性匹配（tempered token）限定，
+   否则对象号会错位：上一个没有流的对象（如字体字典）会被当成下一个流的
+   拥有者——结果就是 CMap 挂错对象号，字体与编码表关联不上。 */
 function pdfStreamChunks(bytes, latin) {
   const out = [];
-  const re = /(\d+)\s+(\d+)\s+obj\b([\s\S]{0,800}?)stream(\r?\n?)/g;
+  const re = /(\d+)\s+(\d+)\s+obj\b((?:(?!\bendobj\b|\bstream\b)[\s\S]){0,800}?)stream(\r?\n?)/g;
   let m;
   while ((m = re.exec(latin))) {
     const start = m.index + m[0].length;
@@ -355,7 +485,8 @@ function pdfStreamChunks(bytes, latin) {
     /* 回退数据尾部与 endstream 之间的 EOL，避免多余字节破坏解压 */
     while (end > start && (latin[end - 1] === "\n" || latin[end - 1] === "\r" || latin[end - 1] === " ")) end--;
     if (end <= start) continue;
-    out.push({ dict: m[3] || "", data: bytes.subarray(start, end) });
+    /* 保留对象号：CMap 与内容流的对应关系靠它建立 */
+    out.push({ num: m[1], dict: m[3] || "", data: bytes.subarray(start, end) });
   }
   return out;
 }
@@ -379,7 +510,7 @@ function collectPdfStreams(bytes, latin, depth, done) {
         });
         return;
       }
-      out.push({ dict: c.dict, data: data || c.data });
+      out.push({ num: c.num, dict: c.dict, data: data || c.data });
       step();
     };
     if (flate) inflateBytes(c.data).then(function (d) { proceed(d && d.length ? d : c.data); });
@@ -398,23 +529,47 @@ function extractPdfText(file) {
           const bytes = new Uint8Array(fr.result);
           collectPdfStreams(bytes, bytesToLatin1(bytes), 0, function (list) {
             try {
-              /* 两阶段：先汇总 ToUnicode 映射表，再解码文本。
-                 因为 CMap 对象可能排在任何内容流之后，边扫边解会漏掉映射。 */
-              const cmap = {};
-              const raw = [];
+              /* 两阶段：先把所有 ToUnicode 表收齐，再解码内容流——
+                 CMap 对象可能排在任何内容流之后，边扫边解会漏表。
+                 每张表独立存放、绝不合并：见 pdfContentText 的说明。 */
+              const cmaps = [], cmapByObj = {}, contents = [];
               list.forEach(function (c) {
+                /* 图像流（JPEG/JPX/CCITT…）解压后是像素，但字节里也可能
+                   碰巧出现 "Tj"，会被误当成内容流——按流字典直接排除。 */
+                if (/\/(?:Image|DCTDecode|JPXDecode|CCITTFaxDecode|JBIG2Decode)/.test(c.dict)) return;
                 const latin = bytesToLatin1(c.data);
                 if (/beginbfchar|beginbfrange|CIDInit|CMapName/.test(latin)) {
                   const m = parseToUnicode(latin);
-                  Object.keys(m).forEach(function (k) { cmap[k] = m[k]; });
+                  if (Object.keys(m).length) {
+                    cmaps.push(m);
+                    if (c.num != null) cmapByObj[c.num] = m;
+                  }
                   return;
                 }
                 if (!/\b(?:BT|Tj|TJ|Td|TD|Tm)\b/.test(latin)) return;
-                raw.push(latin);
+                contents.push(latin);
+              });
+              /* 资源字典 → 每个字体的候选表（先把对象号换成表本身） */
+              const fontObjCands = pdfFontCmapCandidates(bytesToLatin1(bytes));
+              const fontCmapLists = {};
+              Object.keys(fontObjCands).forEach(function (k) {
+                const arr = [];
+                fontObjCands[k].forEach(function (o) { if (cmapByObj[o]) arr.push(cmapByObj[o]); });
+                if (arr.length) fontCmapLists[k] = arr;
+              });
+              /* 合并表仅作兜底：字体切换解析失败时，退回「一张表解全部」的旧路径 */
+              const merged = {};
+              cmaps.forEach(function (cm) {
+                Object.keys(cm).forEach(function (k) { merged[k] = cm[k]; });
               });
               const texts = [];
-              raw.forEach(function (latin) {
-                const t = cleanPdfText(pdfTokensToText(pdfStringTokens(latin), cmap));
+              contents.forEach(function (latin) {
+                let t = "";
+                try { t = pdfContentText(latin, cmaps, fontCmapLists); } catch (e) { t = ""; }
+                if (!t || readableScore(t) < 0.6) {
+                  const t2 = cleanPdfText(pdfTokensToText(pdfStringTokens(latin), merged));
+                  if (t2 && readableScore(t2) > readableScore(t)) t = t2;
+                }
                 /* 嵌入字体等二进制流偶有噪声，按可读性阈值过滤 */
                 if (t && readableScore(t) >= 0.6) texts.push(t);
               });
