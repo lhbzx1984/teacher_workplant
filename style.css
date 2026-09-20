@@ -644,6 +644,40 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .gdm-file { border: 1px solid var(--ok-line); background: var(--surface); color: var(--ink-2); border-radius: 7px; padding: 7px 12px; font-size: 11.5px; display: inline-block; }
 .gdm-file b { color: var(--ok); margin-right: 5px; }
 
+/* —— 演示 9~12：差旅 / 票据识别 / 竞赛·科研经费 / 财务报销 —— */
+.gdm-flow { max-width: 420px; }
+.gdm-head { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 7px 10px; font-size: 12px; margin-bottom: 7px; display: flex; align-items: baseline; gap: 7px; }
+.gdm-head b { font-family: var(--serif); font-size: 13px; }
+.gdm-head span { font-size: 10.5px; color: var(--ink-3); }
+.gdm-upload { border: 1px dashed var(--primary-line); background: var(--primary-tint); color: var(--primary); border-radius: 9px; padding: 8px; font-size: 12px; text-align: center; }
+.gdm-rcpt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+.gdm-rcpt-grid.c2 { grid-template-columns: repeat(2, 1fr); }
+.gdm-rcpt { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.gdm-rcpt-thumb { height: 28px; background: var(--gold-tint); color: var(--gold-strong); font-size: 10px; letter-spacing: .1em; display: flex; align-items: center; justify-content: center; }
+.gdm-rcpt-thumb.img { background: var(--surface-2); color: var(--ink-3); }
+.gdm-rcpt-body { padding: 5px 7px; }
+.gdm-rcpt-amt { font-size: 12.5px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; margin-top: 3px; }
+.gdm-rcpt-src { font-size: 9.5px; color: var(--ink-3); margin-top: 1px; }
+.gdm-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.gdm-kpis.c3 { grid-template-columns: repeat(3, 1fr); }
+.gdm-kpi { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 6px 4px; text-align: center; }
+.gdm-kpi span { display: block; font-size: 9.5px; color: var(--ink-3); }
+.gdm-kpi b { display: block; font-size: 12px; margin-top: 2px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.gdm-bar { height: 9px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; margin-top: 7px; }
+.gdm-bar i { display: block; height: 100%; background: var(--blue-400); animation: gd-bar 1s ease both; }
+.gdm-bar.over i { background: var(--danger); }
+.gdm-tbl { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.gdm-tbl-row { display: flex; align-items: center; font-size: 11px; padding: 5px 8px; border-top: 1px solid var(--line); color: var(--ink-2); background: var(--surface); }
+.gdm-tbl-row:first-child { border-top: none; background: var(--surface-2); font-size: 10.5px; color: var(--ink-3); }
+.gdm-tbl-row span:nth-child(1) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdm-tbl-row span:nth-child(2) { flex: 0 0 66px; text-align: right; font-variant-numeric: tabular-nums; }
+.gdm-two { display: flex; gap: 8px; }
+.gdm-two > div { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); padding: 8px 9px; }
+.gdm-ttl { font-size: 11.5px; font-weight: 600; color: var(--ink); margin-bottom: 6px; }
+.gdm-note { font-size: 10.5px; color: var(--ink-3); border-left: 2px solid var(--gold-line); padding-left: 7px; margin-top: 7px; line-height: 1.6; }
+.gdm-t7 { animation: gd-up .5s 4.75s ease both; }
+.gdm-t8 { animation: gd-up .5s 5.5s ease both; }
+
 
 /* ===== 差旅票据与附件 ===== */
 .rcpt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 4px 18px 16px; }
