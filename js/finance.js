@@ -1,6 +1,6 @@
 "use strict";
 
-/* 待生成报销单的来源：差旅项目 + 竞赛项目（两者都能产生报销） */
+/* 待生成报销单的来源：差旅 + 竞赛 + 科研项目（三者都能产生报销） */
 function pendingSourceCount() {
   const used = function (type, id) {
     return (DB.reimbursements || []).some(function (r) {
@@ -10,7 +10,16 @@ function pendingSourceCount() {
   let n = 0;
   (DB.trips || []).forEach(function (t) { if (!used("trip", t.id)) n++; });
   (DB.competitions || []).forEach(function (c) { if (!used("competition", c.id)) n++; });
+  (DB.projects || []).forEach(function (p) { if (!used("project", p.id)) n++; });
   return n;
+}
+
+/* 来源类型中文名：提示文案与确认弹窗共用，避免三处各写一套 */
+function reimTypeLabel(type) {
+  if (type === "trip") return "差旅项目";
+  if (type === "competition") return "竞赛项目";
+  if (type === "project") return "科研项目";
+  return "项目";
 }
 
 function renderFinance(view) {
@@ -24,7 +33,7 @@ function renderFinance(view) {
   const pendingSum = sum(all.filter(function (r) { return r.status === "待提交" || r.status === "审批中"; }), function (r) { return r.amount; });
   const pendingSrc = pendingSourceCount();
 
-  let h = '<div class="page-head"><div class="page-title">财务报销<small>差旅与竞赛票据汇总 · 报销单状态跟踪</small></div>' +
+  let h = '<div class="page-head"><div class="page-title">财务报销<small>差旅 · 竞赛 · 科研项目票据汇总 · 报销单状态跟踪</small></div>' +
     '<div class="toolbar"><button class="btn" id="reim-add">生成报销单</button></div></div>';
 
   h += '<div class="grid grid-4" style="margin-bottom:14px">' +
@@ -40,7 +49,7 @@ function renderFinance(view) {
     "</select></div>";
 
   if (!list.length) {
-    h += '<div class="empty">' + (all.length ? "没有该状态的报销单" : "还没有报销单——到「差旅项目」或「学科竞赛 → 经费与票据」中点击「生成报销单」，或点击右上角按钮") + "</div>";
+    h += '<div class="empty">' + (all.length ? "没有该状态的报销单" : "还没有报销单——到「差旅项目」「学科竞赛 → 经费与票据」或「科研项目 → 经费与票据」中点击「生成报销单」，或点击右上角按钮") + "</div>";
   } else {
     h += '<table class="tbl"><thead><tr><th>单号</th><th>报销事项</th><th>关联项目</th><th>申请人</th><th>申请日期</th>' +
       "<th>金额</th><th>状态</th><th style=\"width:150px\">操作</th></tr></thead><tbody>";
@@ -65,11 +74,17 @@ function renderFinance(view) {
   bindFinance(view);
 }
 
-/* 「关联项目」单元格：差旅 / 竞赛 / 手工录入三态，有来源时可点击跳转 */
+/* 「关联项目」单元格：差旅 / 竞赛 / 科研 / 手工录入，有来源时可点击跳转 */
+function reimSourceColor(type) {
+  if (type === "competition") return "purple";
+  if (type === "project") return "teal";
+  return "blue";
+}
+
 function reimSourceCellHTML(src) {
   if (!src || !src.type) return '<span class="muted">手工录入</span>';
   const short = src.name.length > 16 ? src.name.slice(0, 16) + "…" : src.name;
-  const color = src.type === "competition" ? "purple" : "blue";
+  const color = reimSourceColor(src.type);
   return badge(src.label, color) + " " +
     (src.go ? '<span class="link" data-go="' + src.go + '">' + esc(short) + "</span>"
       : '<span class="muted">' + esc(short || "已删除") + "</span>");
@@ -137,7 +152,7 @@ function viewReimbursement(r) {
       "<span>报销事项：" + esc(r.title || "-") + "</span>" +
       "<span>申请人：" + esc(r.applicant || "-") + "</span>" +
       "<span>申请日期：" + esc(r.applyDate || "-") + "</span>" +
-      (src.go ? badge(src.label, src.type === "competition" ? "purple" : "blue") +
+      (src.go ? badge(src.label, reimSourceColor(src.type)) +
         '<span class="link" data-go="' + src.go + '">查看来源项目</span>' : "") +
       "</div>" +
       reimItemsTableHTML(r) +
@@ -238,12 +253,16 @@ function exportFundRequestForm(r) {
   const src = reimSourceOf(r);
   const so = src.obj;
   const st = DB.settings || {};
-  /* 事由与项目名称按来源拼：差旅写「项目名 · 事由」，竞赛写「赛事名（级别竞赛经费）」 */
+  /* 事由与项目名称按来源拼：差旅写「项目名 · 事由」，竞赛与科研写各自的经费口径 */
   const reasonDefault = so
-    ? (src.type === "trip" ? so.name + (so.reason ? " · " + so.reason : "") : so.name + "竞赛经费（器件耗材与参赛差旅）")
+    ? (src.type === "trip" ? so.name + (so.reason ? " · " + so.reason : "")
+      : src.type === "project" ? so.name + "科研经费（仪器设备、耗材材料、版面专利与外协差旅）"
+        : so.name + "竞赛经费（器件耗材与参赛差旅）")
     : (r.title || "");
   const projectDefault = so
-    ? (src.type === "trip" ? so.name + "（" + so.type + "）" : so.name + "（" + (so.level || "学科") + "竞赛）")
+    ? (src.type === "trip" ? so.name + "（" + so.type + "）"
+      : src.type === "project" ? so.name + "（" + (so.level || "科研") + "项目" + (so.no ? " · " + so.no : "") + "）"
+        : so.name + "（" + (so.level || "学科") + "竞赛）")
     : (r.title || "");
   formModal({
     title: "\u5bfc\u51fa\u8d44\u91d1\u7533\u8bf7\u5355 \u00b7 " + (r.no || r.title),
@@ -347,14 +366,21 @@ function fillReimbursement(r, source, sourceType) {
   r.applyDate = r.applyDate || todayISO();
 }
 
-/* 为一个来源（差旅项目 / 竞赛项目）生成或刷新报销单 */
+/* 按来源类型取回项目对象：三处调用点共用，避免 if/else 各写一遍 */
+function reimSourceObject(type, id) {
+  if (type === "competition") return getCompetition(id);
+  if (type === "project") return getProject(id);
+  return getTrip(id);
+}
+
+/* 为一个来源（差旅 / 竞赛 / 科研项目）生成或刷新报销单 */
 function createReimbursement(source, sourceType) {
   if (!source) return;
   const type = sourceType || "trip";
   const existing = (DB.reimbursements || []).find(function (r) {
     return (r.sourceType || (r.tripId ? "trip" : "")) === type && (r.sourceId || r.tripId) === source.id;
   });
-  const label = type === "trip" ? "差旅项目" : "竞赛项目";
+  const label = reimTypeLabel(type);
   if (existing) {
     confirmModal("该" + label + "已生成报销单（" + esc(existing.no) + "），是否重新生成？<br><span class='muted'>重新生成将覆盖原有明细与金额。</span>", function () {
       fillReimbursement(existing, source, type);
@@ -388,6 +414,14 @@ function createReimbursement(source, sourceType) {
 
 /* 来源清单：按类型取可选项目，附可报销金额与「已生成」标记 */
 function reimSourceOptions(type) {
+  if (type === "project") {
+    return (DB.projects || []).map(function (p) {
+      const has = (DB.reimbursements || []).some(function (r) {
+        return (r.sourceType || (r.tripId ? "trip" : "")) === "project" && (r.sourceId || r.tripId) === p.id;
+      });
+      return { value: p.id, text: p.name + "（" + (p.level || "项目") + " · " + fmtMoney(projReceiptTotal(p)) + (has ? " · 已生成" : "") + "）" };
+    });
+  }
   if (type === "competition") {
     return (DB.competitions || []).map(function (c) {
       const has = (DB.reimbursements || []).some(function (r) {
@@ -408,27 +442,37 @@ function reimSourceOptions(type) {
 function reimSourceForm() {
   const hasTrip = (DB.trips || []).length > 0;
   const hasComp = (DB.competitions || []).length > 0;
-  if (!hasTrip && !hasComp) {
-    toast("请先在「差旅项目」或「学科竞赛」中创建项目");
+  const hasProj = (DB.projects || []).length > 0;
+  if (!hasTrip && !hasComp && !hasProj) {
+    toast("请先在「差旅项目」「学科竞赛」或「科研项目」中创建项目");
     return;
   }
   const typeOpts = [];
   if (hasTrip) typeOpts.push({ value: "trip", text: "差旅项目（票据 + 补助）" });
   if (hasComp) typeOpts.push({ value: "competition", text: "学科竞赛（器件耗材 + 参赛差旅）" });
+  if (hasProj) typeOpts.push({ value: "project", text: "科研项目（仪器耗材 + 版面专利 + 外协差旅）" });
+  const firstType = hasTrip ? "trip" : hasComp ? "competition" : "project";
+
+  /* 三种来源各自的口径说明：补助只有差旅有，采购 / 科研科目一律实报实销 */
+  const TIPS = {
+    trip: "差旅按<b>票据 + 补助</b>汇总：补助为「人数 × 天数 × 标准」。",
+    competition: "竞赛按<b>票据实报实销</b>：先在竞赛详情「经费与票据」上传器件耗材等发票，再生成报销单。",
+    project: "科研按<b>票据实报实销</b>：先在科研项目「经费与票据」上传仪器设备、耗材材料、版面费、专利费、外协费等发票，再生成报销单。"
+  };
 
   const overlay = formModal({
     title: "生成报销单",
     body:
       '<div class="hint" style="margin-bottom:10px">差旅项目汇总票据金额与市内交通 / 餐费补助；' +
-      "竞赛项目汇总器件耗材、资料图书、软件服务与参赛差旅票据（不含补助）。</div>" +
+      "竞赛与科研项目按票据实报实销，不含补助。</div>" +
       '<div class="form-row">' +
-      fieldHTML("来源类型", selectHTML("srcType", hasTrip ? "trip" : "competition", typeOpts)) +
+      fieldHTML("来源类型", selectHTML("srcType", firstType, typeOpts)) +
       fieldHTML("项目", '<select class="input" name="srcId"></select>') +
       "</div>" +
       '<div class="hint" id="reim-src-tip"></div>',
     onSubmit: function (data) {
       const type = data.srcType;
-      const obj = type === "competition" ? getCompetition(data.srcId) : getTrip(data.srcId);
+      const obj = reimSourceObject(type, data.srcId);
       if (!obj) { toast("请选择项目"); return false; }
       createReimbursement(obj, type);
     }
@@ -443,11 +487,7 @@ function reimSourceForm() {
     idSel.innerHTML = opts.length
       ? opts.map(function (o) { return '<option value="' + esc(o.value) + '">' + esc(o.text) + "</option>"; }).join("")
       : '<option value="">暂无项目</option>';
-    if (tip) {
-      tip.innerHTML = type === "competition"
-        ? "竞赛按<b>票据实报实销</b>：先在竞赛详情「经费与票据」上传器件耗材等发票，再生成报销单。"
-        : "差旅按<b>票据 + 补助</b>汇总：补助为「人数 × 天数 × 标准」。";
-    }
+    if (tip) tip.innerHTML = TIPS[type] || "";
   };
   typeSel.addEventListener("change", refresh);
   refresh();

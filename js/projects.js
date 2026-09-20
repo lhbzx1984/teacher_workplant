@@ -2,6 +2,18 @@
 
 let projectTab = "info";
 
+/* 科研项目三个页签：经费与票据复用通用票据能力，只是类别换成科研经费科目 */
+const PROJ_TABS = [["info", "项目概览"], ["fund", "经费与票据"], ["outputs", "研究成果"]];
+
+const PROJ_RECEIPT_OPTS = {
+  kinds: RECEIPT_KINDS_PROJ,
+  defaultKind: "仪器设备票据",
+  notePlaceholder: "如：示波器 ×1 / 化学试剂一批 / 论文版面费",
+  hint: "支持图片（JPG/PNG，自动压缩）与 PDF 文件。上传时会<b>自动识别</b>票据类别、金额与日期" +
+    "（文件名 → PDF 文本层 → 图片 OCR）；仪器设备、耗材材料、测试化验加工、版面费、专利费、外协服务、专家咨询费等发票" +
+    "会归入对应科研科目，差旅票据同样可上传，发票上的品名也会自动填进备注，识别结果请核对。"
+};
+
 const PROJ_LEVELS = ["国家级", "省部级", "市厅级", "校级", "横向课题"];
 const PROJ_STATUS = ["在研", "已结题", "已中止"];
 const OUTPUT_TYPES = ["论文", "专利", "软著", "专著", "标准", "其他"];
@@ -33,9 +45,11 @@ function renderProjects(view) {
     h += '<table class="tbl"><thead><tr><th>项目名称</th><th>编号</th><th>级别</th><th>角色</th><th>经费</th><th>起止</th><th>状态</th><th style="width:110px">操作</th></tr></thead><tbody>';
     list.forEach(function (p) {
       const spent = sum(DB.expenses.filter(function (e) { return e.projectId === p.id; }), function (e) { return e.amount; });
+      const rcpt = projReceiptTotal(p);
       h += '<tr class="clickable" data-go="project/' + p.id + '"><td><b>' + esc(p.name) + "</b></td><td>" + esc(p.no || "-") + "</td>" +
         "<td>" + levelBadge(p.level) + "</td><td>" + badge(p.role, p.role === "主持" ? "green" : "gray") + "</td>" +
-        "<td>" + fmtMoney(p.fund) + '<div class="muted">已支 ' + fmtMoney(spent) + "</div></td>" +
+        "<td>" + fmtMoney(p.fund) + '<div class="muted">已支 ' + fmtMoney(spent + rcpt) +
+        (rcpt ? " · 票据 " + fmtMoney(rcpt) : "") + "</div></td>" +
         "<td>" + esc(p.startDate || "") + " ~ " + esc(p.endDate || "") + "</td><td>" + statusBadge(p.status) + "</td>" +
         '<td><span class="flex" style="gap:10px"><span class="link" data-proj-edit="' + p.id + '">编辑</span><span class="link" data-proj-del="' + p.id + '">删除</span></span></td></tr>';
     });
@@ -126,9 +140,11 @@ function bindProjects(view) {
     el.addEventListener("click", function (e) {
       e.stopPropagation();
       const p = getProject(el.getAttribute("data-proj-del"));
-      const n = DB.expenses.filter(function (x) { return x.projectId === p.id; }).length;
+      const n = DB.expenses.filter(function (x) { return x.projectId === p.id; }).length +
+        DB.outputs.filter(function (o) { return o.projectId === p.id; }).length +
+        ((p.receipts || []).length);
       confirmModal("确定删除项目 <b>" + esc(p.name) + "</b>？" +
-        (n ? "<br><span style='color:var(--red-600)'>该项目的 " + n + " 条经费记录将一并删除。</span>" : ""), function () {
+        (n ? "<br><span style='color:var(--red-600)'>该项目的 " + n + " 条经费 / 成果 / 票据记录将一并删除。</span>" : ""), function () {
         DB.projects = DB.projects.filter(function (x) { return x.id !== p.id; });
         DB.expenses = DB.expenses.filter(function (x) { return x.projectId !== p.id; });
         DB.outputs.forEach(function (o) { if (o.projectId === p.id) o.projectId = ""; });
@@ -146,7 +162,7 @@ function bindProjects(view) {
   });
 }
 
-function outputForm(output) {
+function outputForm(output, defaultProjectId) {
   formModal({
     title: output ? "编辑成果" : "新增科研成果",
     body:
@@ -159,7 +175,7 @@ function outputForm(output) {
       fieldHTML("期刊/授权号", inputHTML("venue", output ? output.venue : "", { placeholder: "论文：期刊名；专利/软著：授权号" })) +
       fieldHTML("作者/发明人", inputHTML("authors", output ? output.authors : "", { placeholder: "如：李明, 张子昂" })) +
       "</div>" +
-      fieldHTML("关联项目", selectHTML("projectId", output ? output.projectId : "", DB.projects.map(function (p) { return { value: p.id, text: p.name.slice(0, 24) }; }), { allowEmpty: true, emptyText: "不关联" })) +
+      fieldHTML("关联项目", selectHTML("projectId", output ? output.projectId : (defaultProjectId || ""), DB.projects.map(function (p) { return { value: p.id, text: p.name.slice(0, 24) }; }), { allowEmpty: true, emptyText: "不关联" })) +
       fieldHTML("备注", inputHTML("note", output ? output.note : "", { placeholder: "如：北大核心 / SCI 三区 / 已转让" })),
     onSubmit: function (data) {
       if (!data.title.trim()) { toast("请填写标题"); return false; }
@@ -183,7 +199,10 @@ function renderProjectDetail(view, projId) {
 
   const expenses = DB.expenses.filter(function (e) { return e.projectId === p.id; });
   const outputs = DB.outputs.filter(function (o) { return o.projectId === p.id; });
-  const spent = sum(expenses, function (e) { return e.amount; });
+  const flowSum = sum(expenses, function (e) { return e.amount; });
+  const rcptSum = projReceiptTotal(p);
+  const spent = flowSum + rcptSum;
+  projectTab = PROJ_TABS.some(function (t) { return t[0] === projectTab; }) ? projectTab : "info";
 
   let h = '<div class="page-head"><div class="flex"><span class="link" data-go="projects" style="margin-right:4px">科研项目</span><span class="muted">/</span>' +
     '<div class="page-title">' + esc(p.name) + "<small>" + levelBadge(p.level) + " " + badge(p.role, p.role === "主持" ? "green" : "gray") + " " + statusBadge(p.status) + "</small></div></div>" +
@@ -198,9 +217,38 @@ function renderProjectDetail(view, projId) {
 
   h += '<div class="card"><div class="card-body">' +
     '<div class="bar-track" style="margin-bottom:6px"><div class="bar-fill" style="width:' + Math.min(100, p.fund ? Math.round(spent / p.fund * 100) : 0) + '%"></div></div>' +
-    '<div class="muted">经费执行进度：' + fmtMoney(spent) + " / " + fmtMoney(p.fund) + (p.note ? " · " + esc(p.note) : "") + "</div></div></div>";
+    '<div class="muted">经费执行进度：' + fmtMoney(spent) + " / " + fmtMoney(p.fund) +
+    "（经费流水 " + fmtMoney(flowSum) + " · 票据 " + fmtMoney(rcptSum) + "）" + (p.note ? " · " + esc(p.note) : "") + "</div></div></div>";
 
-  h += '<div class="grid grid-2">';
+  h += '<div class="tabs">' + PROJ_TABS.map(function (t) {
+    return '<div class="tab' + (projectTab === t[0] ? " active" : "") + '" data-proj-tab="' + t[0] + '">' + t[1] +
+      (t[0] === "fund" && spent ? " " + fmtMoney(spent) : "") +
+      (t[0] === "outputs" && outputs.length ? " " + outputs.length : "") +
+      "</div>";
+  }).join("") + "</div>";
+
+  h += '<div id="proj-tab-body">' + projTabBodyHTML(p, expenses, outputs) + "</div>";
+
+  view.innerHTML = h;
+  bindProjectDetail(view, p);
+}
+
+function projTabBodyHTML(p, expenses, outputs) {
+  if (projectTab === "fund") return projFundHTML(p, expenses || []);
+  if (projectTab === "outputs") return projOutputsHTML(p, outputs || []);
+  return projInfoHTML(p);
+}
+
+/* 概览：项目信息 + 节点管理 */
+function projInfoHTML(p) {
+  let h = '<div class="card"><div class="card-body"><div class="kv">' +
+    "<div class='k'>项目编号</div><div>" + esc(p.no || "-") + "</div>" +
+    "<div class='k'>项目级别</div><div>" + levelBadge(p.level) + " · " + badge(p.role, p.role === "主持" ? "green" : "gray") + "</div>" +
+    "<div class='k'>起止时间</div><div>" + esc(p.startDate || "-") + " ~ " + esc(p.endDate || "-") + "</div>" +
+    "<div class='k'>项目状态</div><div>" + statusBadge(p.status) + "</div>" +
+    "<div class='k'>备注</div><div>" + esc(p.note || "-") + "</div>" +
+    "</div></div></div>";
+
   h += '<div class="card"><div class="card-head"><div class="card-title">节点管理<span class="muted" style="font-weight:400;margin-left:8px;font-size:12px">跟踪的节点自动同步教学日历（未完成红色 / 已完成绿色）</span></div><button class="btn btn-sm" id="ms-add">添加节点</button></div><div class="card-body"><div class="timeline">';
   if (!(p.milestones || []).length) h += '<div class="hint">还没有节点，建议至少添加：开题、中期检查、结题验收</div>';
   (p.milestones || []).sort(function (a, b) { return a.date < b.date ? -1 : 1; }).forEach(function (m) {
@@ -214,9 +262,88 @@ function renderProjectDetail(view, projId) {
       '<span class="link" data-ms-del="' + m.id + '">删除</span></div></div>';
   });
   h += "</div></div></div>";
+  return h;
+}
 
+/* 研究成果 */
+function projOutputsHTML(p, outputs) {
+  let h = '<div class="card"><div class="card-head"><div class="card-title">本项目成果（' + outputs.length + "）</div>" +
+    '<button class="btn btn-sm" id="output-add-detail">登记成果</button></div>';
+  if (!outputs.length) return h + '<div class="empty" style="padding:22px">暂无关联成果——论文、专利、软著都可登记在这里</div></div>';
+  h += '<table class="tbl"><thead><tr><th>类型</th><th>标题</th><th>期刊/编号</th><th>日期</th></tr></thead><tbody>';
+  outputs.forEach(function (o) {
+    h += "<tr><td>" + badge(o.type, o.type === "论文" ? "blue" : "purple") + "</td><td><b>" + esc(o.title) + "</b>" +
+      (o.note ? '<div class="muted">' + esc(o.note) + "</div>" : "") + "</td><td>" + esc(o.venue || o.no || "-") + "</td><td>" + esc(o.date || "-") + "</td></tr>";
+  });
+  return h + "</tbody></table></div>";
+}
+
+/* ===================== 科研项目经费与票据 ===================== */
+
+function projFundHTML(p, expenses) {
+  const total = projReceiptTotal(p);
+  const equip = projEquipTotal(p);
+  const pub = projPublishTotal(p);
+  const outsource = projOutsourceTotal(p);
+  const travel = projTravelTotal(p);
+  const byKind = receiptsByKind(p);
+  const budget = Number(p.fund) || 0;
+  const flowSum = sum(expenses, function (e) { return e.amount; });
+  const reim = (DB.reimbursements || []).find(function (r) {
+    return (r.sourceType || (r.tripId ? "trip" : "")) === "project" && (r.sourceId || r.tripId) === p.id;
+  });
+
+  let h = '<div class="grid grid-4">' +
+    statCard("票据合计", fmtMoney(total), "", ((p.receipts || []).length) + " 个票据 / 附件") +
+    statCard("设备材料类", fmtMoney(equip), "", "仪器设备 · 耗材材料 · 测试化验加工") +
+    statCard("论文与知识产权", fmtMoney(pub), "", "版面费 · 专利费 · 资料图书 · 软件 · 专家咨询") +
+    statCard("调研差旅类", fmtMoney(travel), "", "交通 · 住宿 · 市内交通 · 餐饮") +
+    "</div>";
+
+  /* 预算执行条：项目经费即预算；统计口径为「流水 + 票据」，超支转红 */
+  if (budget) {
+    const spent = flowSum + total;
+    const pct = Math.min(100, Math.round(spent / budget * 100));
+    h += '<div class="card"><div class="card-body">' +
+      '<div class="hbar-row"><div class="hbar-label">预算执行</div>' +
+      '<div class="hbar-track"><div class="hbar-fill' + (spent > budget ? " hbar-fill-danger" : "") + '" style="width:' + pct + '%">' + pct + "%</div></div>" +
+      '<div class="muted" style="font-size:12px">' + fmtMoney(spent) + " / " + fmtMoney(budget) + "</div></div>" +
+      "</div></div>";
+  }
+
+  h += '<div class="card"><div class="card-head"><div class="card-title">经费汇总</div>' +
+    '<span class="flex" style="gap:8px"><button class="btn btn-light btn-sm" id="exp-add">记一笔</button>' +
+    '<button class="btn btn-sm" id="proj-reim">' + (reim ? "重新生成报销单" : "生成报销单") + "</button></span></div>" +
+    '<table class="tbl"><tbody>' +
+    "<tr><th style=\"width:150px\">设备材料类</th><td>" + fmtMoney(equip) + "</td></tr>" +
+    "<tr><th>论文与知识产权类</th><td>" + fmtMoney(pub) + "</td></tr>" +
+    "<tr><th>外协合作类</th><td>" + fmtMoney(outsource) + "</td></tr>" +
+    "<tr><th>调研差旅类</th><td>" + fmtMoney(travel) + "</td></tr>" +
+    '<tr><th>票据合计</th><td><b style="font-size:15px">' + fmtMoney(total) + "</b></td></tr>" +
+    "<tr><th>经费流水</th><td>" + fmtMoney(flowSum) + '<span class="muted"> · 无票据的手工记账</span></td></tr>' +
+    '<tr><th>总支出</th><td><b>' + fmtMoney(flowSum + total) + "</b></td></tr>" +
+    "<tr><th>项目经费</th><td>" + fmtMoney(budget) + "（结余 " + fmtMoney(budget - flowSum - total) + "）</td></tr>" +
+    "<tr><th>报销单</th><td>" + (reim
+      ? '<span class="link" data-go="finance">' + esc(reim.no) + "</span> · " + badge(reim.status, reimStatusColor(reim.status)) + " · " + fmtMoney(reim.amount)
+      : '<span class="muted">尚未生成</span>') + "</td></tr>" +
+    "</tbody></table>" +
+    '<div class="hint" style="margin:0 0 12px;padding:0 18px">票据与经费流水是两条独立记录渠道：' +
+    "已在「经费流水」记过账的支出不必再上传票据，否则总支出会重复统计。</div></div>";
+
+  if (byKind.length) {
+    h += '<div class="card"><div class="card-head"><div class="card-title">按类别汇总</div></div>' +
+      '<table class="tbl"><thead><tr><th>类别</th><th style="width:80px">张数</th><th style="width:120px">金额</th><th style="width:140px">占比</th></tr></thead><tbody>';
+    byKind.forEach(function (k) {
+      const pct = total ? Math.round(k.amount / total * 100) : 0;
+      h += "<tr><td>" + badge(k.kind, receiptKindColor(k.kind)) + "</td><td>" + k.count + "</td><td>" + fmtMoney(k.amount) + "</td>" +
+        '<td><div class="hbar-track" style="height:8px"><div class="hbar-fill" style="width:' + pct + '%"></div></div> ' + pct + "%</td></tr>";
+    });
+    h += "</tbody></table></div>";
+  }
+
+  /* 经费流水：无票据的手工记账渠道 */
   h += '<div class="card"><div class="card-head"><div class="card-title">经费流水（' + expenses.length + "）</div>" +
-    '<button class="btn btn-sm" id="exp-add">记一笔</button></div>';
+    '<button class="btn btn-sm" id="exp-add-2">记一笔</button></div>';
   if (!expenses.length) h += '<div class="empty" style="padding:22px">暂无支出记录</div>';
   else {
     h += '<table class="tbl"><thead><tr><th>日期</th><th>事项</th><th>类别</th><th style="text-align:right">金额</th><th style="width:60px">操作</th></tr></thead><tbody>';
@@ -225,31 +352,29 @@ function renderProjectDetail(view, projId) {
         '<td style="text-align:right;font-weight:600">' + fmtMoney(e.amount) + "</td>" +
         '<td><span class="link" data-exp-del="' + e.id + '">删除</span></td></tr>';
     });
-    h += '<tr><td colspan="3" style="text-align:right"><b>合计</b></td><td style="text-align:right"><b>' + fmtMoney(spent) + "</b></td><td></td></tr></tbody></table>";
-  }
-  h += "</div></div>";
-
-  h += '<div class="card"><div class="card-head"><div class="card-title">本项目成果（' + outputs.length + "）</div>" +
-    '<button class="btn btn-sm" id="output-add-detail">登记成果</button></div>';
-  if (!outputs.length) h += '<div class="empty" style="padding:22px">暂无关联成果</div>';
-  else {
-    h += '<table class="tbl"><thead><tr><th>类型</th><th>标题</th><th>日期</th></tr></thead><tbody>';
-    outputs.forEach(function (o) {
-      h += "<tr><td>" + badge(o.type, o.type === "论文" ? "blue" : "purple") + "</td><td><b>" + esc(o.title) + "</b>" + (o.note ? '<div class="muted">' + esc(o.note) + "</div>" : "") + "</td><td>" + esc(o.date) + "</td></tr>";
-    });
-    h += "</tbody></table>";
+    h += '<tr><td colspan="3" style="text-align:right"><b>合计</b></td><td style="text-align:right"><b>' + fmtMoney(flowSum) + "</b></td><td></td></tr></tbody></table>";
   }
   h += "</div>";
 
-  view.innerHTML = h;
-  bindProjectDetail(view, p);
+  /* 票据墙：与差旅、竞赛共用同一套上传 / 识别 / 预览能力 */
+  h += receiptsGridHTML(p, PROJ_RECEIPT_OPTS);
+  return h;
 }
 
 function bindProjectDetail(view, p) {
   const editBtn = $("[data-proj-edit]", view);
   editBtn && editBtn.addEventListener("click", function () { projectForm(p); });
 
-  $("#ms-add", view).addEventListener("click", function () {
+  /* 页签切换 */
+  $$("[data-proj-tab]", view).forEach(function (el) {
+    el.addEventListener("click", function () {
+      projectTab = el.getAttribute("data-proj-tab");
+      renderApp();
+    });
+  });
+
+  const msAdd = $("#ms-add", view);
+  msAdd && msAdd.addEventListener("click", function () {
     formModal({
       title: "添加节点",
       body:
@@ -312,7 +437,9 @@ function bindProjectDetail(view, p) {
       }
     });
   }
-  $("#exp-add", view).addEventListener("click", expenseForm);
+  $$("#exp-add, #exp-add-2", view).forEach(function (el) {
+    el.addEventListener("click", expenseForm);
+  });
   $$("[data-exp-del]", view).forEach(function (el) {
     el.addEventListener("click", function () {
       confirmModal("确定删除这笔支出记录？", function () {
@@ -322,6 +449,12 @@ function bindProjectDetail(view, p) {
     });
   });
 
+  /* 票据：与差旅、竞赛共用同一套上传 / 识别 / 预览 / 编辑能力 */
+  bindReceiptOps(view, p, PROJ_RECEIPT_OPTS);
+
+  const reimBtn = $("#proj-reim", view);
+  reimBtn && reimBtn.addEventListener("click", function () { createReimbursement(p, "project"); });
+
   const outAdd = $("#output-add-detail", view);
-  outAdd && outAdd.addEventListener("click", function () { outputForm(null); });
+  outAdd && outAdd.addEventListener("click", function () { outputForm(null, p.id); });
 }

@@ -86,6 +86,14 @@ function normalizeCompetitions() {
   });
 }
 
+/* 旧数据迁移：补齐科研项目缺失字段（receipts / milestones） */
+function normalizeProjects() {
+  (DB.projects || []).forEach(function (p) {
+    if (!Array.isArray(p.receipts)) p.receipts = [];
+    if (!Array.isArray(p.milestones)) p.milestones = [];
+  });
+}
+
 /* 教师信息字段迁移：补全新增字段（school / major），确保旧数据结构完整 */
 function normalizeSettings() {
   const def = defaultDB().settings;
@@ -110,6 +118,7 @@ function loadDB() {
       normalizeCourses();
       normalizeTrips();
       normalizeCompetitions();
+      normalizeProjects();
     } else {
       DB = seedDemo();
       saveDB();
@@ -411,17 +420,32 @@ function tripTypeColor(type) {
 const RECEIPT_KINDS_TRIP = ["火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据", "其他票据", "会议邀请函", "其他附件"];
 const RECEIPT_KINDS_COMP = ["器件耗材票据", "设备器材票据", "资料图书票据", "软件服务票据", "竞赛报名费", "专家评审费",
   "火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据", "其他票据", "会议邀请函", "其他附件"];
+/* 科研项目：按科研经费科目命名（设备费 / 材料费 / 测试化验加工费 / 版面费 / 专利费 / 外协费 / 专家咨询费），
+   同时保留差旅五类——调研、参会、外协对接同样要出差，票据必须能归进来。 */
+const RECEIPT_KINDS_PROJ = ["仪器设备票据", "耗材材料票据", "测试化验加工票据", "版面费票据", "专利费票据",
+  "外协服务票据", "专家咨询费", "资料图书票据", "软件服务票据",
+  "火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据", "其他票据", "会议邀请函", "其他附件"];
 const RECEIPT_KINDS = RECEIPT_KINDS_TRIP;
 
 /* 仅作佐证材料、不计入报销金额的类型 */
 const RECEIPT_NONBILLABLE = ["会议邀请函", "其他附件"];
-/* 可计入报销金额的类型：两套场景类别的并集，去掉佐证类 */
+/* 可计入报销金额的类型：三套场景类别的并集，去掉佐证类 */
 const RECEIPT_BILLABLE = ["火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据", "其他票据",
-  "器件耗材票据", "设备器材票据", "资料图书票据", "软件服务票据", "竞赛报名费", "专家评审费"];
+  "器件耗材票据", "设备器材票据", "资料图书票据", "软件服务票据", "竞赛报名费", "专家评审费",
+  "仪器设备票据", "耗材材料票据", "测试化验加工票据", "版面费票据", "专利费票据", "外协服务票据", "专家咨询费"];
+
+/* 差旅类：竞赛（参赛差旅）与科研（调研参会）共用同一组，避免各写一份导致统计口径漂移 */
+const TRAVEL_KINDS = ["火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据"];
 
 /* 竞赛经费分组：器件器材类 vs 参赛差旅类（用于经费页分类汇总） */
 const COMP_KINDS_MATERIAL = ["器件耗材票据", "设备器材票据", "资料图书票据", "软件服务票据"];
-const COMP_KINDS_TRAVEL = ["火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据"];
+const COMP_KINDS_TRAVEL = TRAVEL_KINDS;
+
+/* 科研经费分组：设备材料 / 论文与知识产权 / 外协合作 / 差旅 */
+const PROJ_KINDS_EQUIP = ["仪器设备票据", "耗材材料票据", "测试化验加工票据"];
+const PROJ_KINDS_PUB = ["版面费票据", "专利费票据", "资料图书票据", "软件服务票据", "专家咨询费"];
+const PROJ_KINDS_OUTSOURCE = ["外协服务票据"];
+const PROJ_KINDS_TRAVEL = TRAVEL_KINDS;
 
 /* 每日补助标准（元 / 人 · 天）：市内交通 80，餐费 100 */
 const ALLOWANCE_TRANSPORT = 80;
@@ -525,10 +549,39 @@ function compBudgetOf(comp) {
   return isFinite(v) && v > 0 ? v : 0;
 }
 
-/* 按类别汇总经费：返回 [{kind, count, amount}]，金额降序 */
-function compExpenseByKind(comp) {
+/* ===================== 科研经费 ===================== */
+
+/* 科研项目用 p.fund 作为预算（项目立项金额），无需再单独设一个预算字段 */
+function projReceiptTotal(proj) {
+  return receiptsTotal((proj && proj.receipts) || []);
+}
+
+/* 设备材料类：仪器 / 耗材 / 测试化验加工 */
+function projEquipTotal(proj) {
+  return receiptsTotalOfKinds((proj && proj.receipts) || [], PROJ_KINDS_EQUIP);
+}
+
+/* 论文与知识产权类：版面费 / 专利 / 资料图书 / 软件 / 专家咨询 */
+function projPublishTotal(proj) {
+  return receiptsTotalOfKinds((proj && proj.receipts) || [], PROJ_KINDS_PUB);
+}
+
+/* 外协合作类：委托开发 / 委托测试 / 合作研究 */
+function projOutsourceTotal(proj) {
+  return receiptsTotalOfKinds((proj && proj.receipts) || [], PROJ_KINDS_OUTSOURCE);
+}
+
+/* 差旅类：调研、参会、外协对接 */
+function projTravelTotal(proj) {
+  return receiptsTotalOfKinds((proj && proj.receipts) || [], PROJ_KINDS_TRAVEL);
+}
+
+/* ===================== 通用按类别汇总 ===================== */
+
+/* 按类别汇总：返回 [{kind, count, amount}]，金额降序。差旅 / 竞赛 / 科研共用 */
+function receiptsByKind(owner) {
   const map = {};
-  ((comp && comp.receipts) || []).forEach(function (r) {
+  ((owner && owner.receipts) || []).forEach(function (r) {
     if (RECEIPT_BILLABLE.indexOf(r.kind) < 0) return;
     if (!map[r.kind]) map[r.kind] = { kind: r.kind, count: 0, amount: 0 };
     map[r.kind].count++;
@@ -536,6 +589,10 @@ function compExpenseByKind(comp) {
   });
   return Object.keys(map).map(function (k) { return map[k]; })
     .sort(function (a, b) { return b.amount - a.amount; });
+}
+
+function compExpenseByKind(comp) {
+  return receiptsByKind(comp);
 }
 
 /* ===================== 报销单来源（差旅 / 竞赛） ===================== */
@@ -554,13 +611,20 @@ function reimSourceOf(r) {
     const c = getCompetition(id);
     return { type: "competition", id: id, obj: c, name: c ? c.name : "已删除的竞赛", label: "竞赛", go: c ? "comp/" + c.id : "" };
   }
+  if (type === "project") {
+    const p = getProject(id);
+    return { type: "project", id: id, obj: p, name: p ? p.name : "已删除的项目", label: "科研", go: p ? "project/" + p.id : "" };
+  }
   return { type: "", id: "", obj: null, name: "", label: "手工录入", go: "" };
 }
 
-/* 来源的待报销金额：差旅含补助，竞赛仅票据 */
+/* 来源的待报销金额：差旅含补助，竞赛与科研仅票据 */
 function sourceReimbursable(src) {
   if (!src || !src.obj) return 0;
-  return src.type === "trip" ? tripTotal(src.obj) : compReceiptTotal(src.obj);
+  if (src.type === "trip") return tripTotal(src.obj);
+  if (src.type === "competition") return compReceiptTotal(src.obj);
+  if (src.type === "project") return projReceiptTotal(src.obj);
+  return 0;
 }
 
 /* ===================== 人民币大写（资金申请单逐位填写） ===================== */
@@ -623,6 +687,7 @@ function importJSONBackup(file, done) {
       normalizeCourses();
       normalizeTrips();
       normalizeCompetitions();
+      normalizeProjects();
       saveDB();
       toast("数据已恢复");
       done && done();
