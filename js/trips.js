@@ -486,13 +486,18 @@ function receiptBatchForm(trip, list) {
     return x.rec || { amount: null, date: "", kind: "", ticketNo: "", note: "", source: "none", confidence: "low" };
   };
   const gotAmount = rows.filter(function (x) { return recOf(x).amount != null; }).length;
+  /* PDF 抽不到文本层，多为扫描件/图片型 PDF——必须说清原因，否则用户只会以为功能坏了 */
+  const pdfMiss = rows.filter(function (x) { return isPDFFile(x.file) && recOf(x).amount == null; }).length;
 
   const overlay = formModal({
     title: "票据信息（共 " + rows.length + " 个文件）", wide: true,
     body:
       '<div class="hint" style="margin-bottom:10px">' +
       (gotAmount ? "已自动识别 <b>" + gotAmount + "</b> 张票据的金额，请核对后保存。" : "未能自动识别金额，请手动填写。") +
-      "识别结果仅为建议值，金额一律以实际票据为准；会议邀请函与其他附件不计入报销金额。</div>" +
+      "识别结果仅为建议值，金额一律以实际票据为准；会议邀请函与其他附件不计入报销金额。" +
+      (pdfMiss ? "<br><b>" + pdfMiss + " 个 PDF 未读出文本层</b>：这类文件通常是扫描件或图片型 PDF（本身不含可提取文字）。" +
+        "可到「学期与设置 → 票据识别」开启图片 OCR，或把 PDF 另存为图片后上传。" : "") +
+      "</div>" +
       '<table class="tbl"><thead><tr><th style="width:32px">#</th><th>文件</th><th style="width:150px">票据类型</th>' +
       '<th style="width:110px">金额（元）</th><th style="width:150px">日期</th><th>备注</th>' +
       '<th style="width:104px">识别来源</th></tr></thead><tbody>' +
