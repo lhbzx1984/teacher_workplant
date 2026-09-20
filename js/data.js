@@ -464,6 +464,39 @@ function tripTotal(trip) {
   return tripReceiptTotal(trip) + tripAllowanceTotal(trip);
 }
 
+/* ===================== 人民币大写（资金申请单逐位填写） ===================== */
+
+/* 资金申请单的金额大写栏是「一格一位」的固定版式，数位从高到低为：
+   仟(千万) 佰(百万) 拾(十万) 万 仟(千) 佰(百) 拾(十) 元 角 分 —— 共 10 位。
+   模板上未启用的高位用 ⊗ 划掉，其余位即使为零也要写「零」。 */
+const RMB_SLOT_UNITS = ["\u4edf", "\u4f70", "\u62fe", "\u4e07", "\u4edf", "\u4f70", "\u62fe", "\u5143", "\u89d2", "\u5206"];
+const RMB_DIGIT_CN = ["\u96f6", "\u58f9", "\u8d30", "\u53c1", "\u8086", "\u4f0d", "\u9646", "\u67d2", "\u634c", "\u7396"];
+const RMB_CROSSED = "\u2297";
+
+/* 返回 10 个数位的字符：前导未启用位为 ⊗，有效位为汉字数字 */
+function rmbUpperSlots(amount) {
+  const n = Number(amount) || 0;
+  /* 超出 9999 万 9999.99 则无法用 10 位表示 */
+  if (n < 0 || n >= 1e8) return null;
+  const cents = Math.round(n * 100);
+  const digits = [];
+  for (let i = 0; i < 10; i++) digits.push(Math.floor(cents / Math.pow(10, 9 - i)) % 10);
+  let first = 10;
+  for (let i = 0; i < 10; i++) { if (digits[i] !== 0) { first = i; break; } }
+  return digits.map(function (d, i) { return i < first ? RMB_CROSSED : RMB_DIGIT_CN[d]; });
+}
+
+/* 拼成大写栏整行文本（含「人民币：」前缀与位单位标签） */
+function rmbUpperLine(amount) {
+  const slots = rmbUpperSlots(amount);
+  if (!slots) return "  \u4eba\u6c11\u5e01\uff1a  \uff08\u91d1\u989d\u8d85\u51fa\u5355\u5f0f\u8303\u56f4\uff09  ";
+  let s = "  \u4eba\u6c11\u5e01\uff1a";
+  slots.forEach(function (d, i) {
+    s += (d === RMB_CROSSED ? RMB_CROSSED + " " : d + " ") + RMB_SLOT_UNITS[i] + " ";
+  });
+  return s + "     ";
+}
+
 /* ===================== 备份与恢复 ===================== */
 
 function exportJSONBackup() {

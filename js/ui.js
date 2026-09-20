@@ -55,6 +55,8 @@ function openModal(opts) {
   document.addEventListener("keydown", function onEsc(e) {
     if (e.key === "Escape") { closeModal(); document.removeEventListener("keydown", onEsc); }
   });
+  /* onOpen：脚部按钮等自定义交互需要拿到真实 DOM 才能绑定 */
+  if (typeof opts.onOpen === "function") opts.onOpen(root);
   return overlay;
 }
 
