@@ -128,10 +128,11 @@ function tripTabBodyHTML(trip) {
 function tripInfoHTML(trip) {
   const days = tripDays(trip);
   const people = tripPeople(trip);
+  const std = tripStd(trip);
   let h = '<div class="grid grid-4">' +
     statCard("票据金额", fmtMoney(tripReceiptTotal(trip)), "", (trip.receipts || []).length + " 张票据 / 附件") +
-    statCard("市内交通补助", fmtMoney(tripTransportAllowance(trip)), "", days + " 天 × " + people + " 人 × " + fmtMoney(trip.allowance.transport)) +
-    statCard("餐费补助", fmtMoney(tripMealAllowance(trip)), "", days + " 天 × " + people + " 人 × " + fmtMoney(trip.allowance.meal)) +
+    statCard("市内交通补助", fmtMoney(tripTransportAllowance(trip)), "", days + " 天 × " + people + " 人 × " + fmtMoney(std.transport)) +
+    statCard("餐费补助", fmtMoney(tripMealAllowance(trip)), "", days + " 天 × " + people + " 人 × " + fmtMoney(std.meal)) +
     statCard("费用合计", fmtMoney(tripTotal(trip)), "", "票据 + 补助") +
     "</div>";
 
@@ -174,7 +175,7 @@ function tripReceiptsHTML(trip) {
   const list = trip.receipts || [];
   let h = '<div class="card"><div class="card-head"><div class="card-title">票据与附件（' + list.length + "）</div>" +
     '<button class="btn btn-sm" id="receipt-upload">上传票据</button></div>' +
-    '<div class="hint" style="margin:0 0 10px;padding:0 18px">支持图片（JPG/PNG，自动压缩）与 PDF 文件；火车票、飞机票、住宿票据请填写金额，会议邀请函等仅作佐证材料不计入金额。</div>';
+    '<div class="hint" style="margin:0 0 10px;padding:0 18px">支持图片（JPG/PNG，自动压缩）与 PDF 文件。上传时会<b>自动识别</b>票据类型、金额与日期（文件名 → PDF 文本层 → 图片 OCR），识别结果预填后仍可修改；火车票、飞机票、住宿票据请核对金额，会议邀请函等仅作佐证材料不计入金额。</div>';
   if (!list.length) {
     h += '<div class="empty">还没有票据——点击「上传票据」添加火车票、飞机票、住宿票据或会议邀请函</div>';
   } else {
@@ -189,7 +190,8 @@ function tripReceiptsHTML(trip) {
         '<div class="rcpt-meta">' +
         '<div class="rcpt-kind">' + badge(r.kind, billable ? tripReceiptColor(r.kind) : "gray") + "</div>" +
         '<div class="rcpt-name" title="' + esc(r.fileName || "") + '">' + esc(r.fileName || "未命名文件") + "</div>" +
-        '<div class="rcpt-sub">' + (billable ? fmtMoney(r.amount) : "佐证材料") + (r.date ? " · " + esc(r.date) : "") + "</div>" +
+        '<div class="rcpt-sub">' + (billable ? fmtMoney(r.amount) : "佐证材料") + (r.date ? " · " + esc(r.date) : "") +
+        " · <span class=\"rcpt-src\">" + recogSourceText(r.recSource) + "</span></div>" +
         (r.note ? '<div class="rcpt-sub">' + esc(r.note) + "</div>" : "") +
         "</div>" +
         '<div class="rcpt-ops">' +
@@ -214,10 +216,9 @@ function tripReceiptColor(kind) {
 function tripAllowanceHTML(trip) {
   const days = tripDays(trip);
   const people = tripPeople(trip);
-  const tp = Number(trip.allowance && trip.allowance.transport);
-  const ml = Number(trip.allowance && trip.allowance.meal);
-  const tStd = isNaN(tp) ? ALLOWANCE_TRANSPORT : tp;
-  const mStd = isNaN(ml) ? ALLOWANCE_MEAL : ml;
+  const std = tripStd(trip);
+  const tStd = std.transport;
+  const mStd = std.meal;
 
   let h = '<div class="card"><div class="card-head"><div class="card-title">补助核算</div>' +
     '<span class="muted">按「人数 × 天数 × 标准」自动计算</span></div>' +
@@ -412,7 +413,15 @@ function pickReceiptFiles(trip) {
         }
       });
     });
-    Promise.all(jobs).then(function (list) { receiptBatchForm(trip, list); });
+    Promise.all(jobs).then(function (list) {
+      const rows = list.filter(function (x) { return x.dataUrl; });
+      if (!rows.length) { toast("没有可保存的文件"); return; }
+      toast("正在识别 " + rows.length + " 个票据…");
+      Promise.all(rows.map(function (x) {
+        return recognizeReceipt(x.file, x.dataUrl).catch(function () { return null; })
+          .then(function (rec) { x.rec = rec; return x; });
+      })).then(function () { receiptBatchForm(trip, rows); });
+    });
   });
   inp.click();
 }
@@ -448,28 +457,61 @@ function compressImageFile(file, maxSide, quality, cb) {
   });
 }
 
-/* 批量票据信息：一次为每个文件填写类型 / 金额 / 日期 */
+function isPDFFile(f) {
+  return /pdf/i.test((f && f.type) || "") || /\.pdf$/i.test((f && f.name) || "");
+}
+
+/* 识别来源徽章：让「金额是怎么来的」始终可见，避免盲信自动识别 */
+function recogBadgeHTML(rc) {
+  if (!rc || !rc.source || rc.source === "none") return badge("未识别", "gray");
+  if (rc.source === "filename") return badge("文件名", "teal");
+  if (rc.source === "pdf") return badge("PDF文本", "blue");
+  if (rc.source === "ocr") return badge("OCR", "purple");
+  return badge("未识别", "gray");
+}
+
+function recogSourceText(src) {
+  if (src === "filename") return "文件名识别";
+  if (src === "pdf") return "PDF 文本识别";
+  if (src === "ocr") return "OCR 识别";
+  return "手动填写";
+}
+
+/* 批量票据信息：识别结果预填到表单，人工核对后再保存 */
 function receiptBatchForm(trip, list) {
   const rows = list.filter(function (x) { return x.dataUrl; });
   if (!rows.length) { toast("没有可保存的文件"); return; }
 
+  const recOf = function (x) {
+    return x.rec || { amount: null, date: "", kind: "", ticketNo: "", note: "", source: "none", confidence: "low" };
+  };
+  const gotAmount = rows.filter(function (x) { return recOf(x).amount != null; }).length;
+
   const overlay = formModal({
     title: "票据信息（共 " + rows.length + " 个文件）", wide: true,
     body:
-      '<div class="hint" style="margin-bottom:10px">请为每个文件选择票据类型并填写金额；会议邀请函与其他附件不计入报销金额。</div>' +
+      '<div class="hint" style="margin-bottom:10px">' +
+      (gotAmount ? "已自动识别 <b>" + gotAmount + "</b> 张票据的金额，请核对后保存。" : "未能自动识别金额，请手动填写。") +
+      "识别结果仅为建议值，金额一律以实际票据为准；会议邀请函与其他附件不计入报销金额。</div>" +
       '<table class="tbl"><thead><tr><th style="width:32px">#</th><th>文件</th><th style="width:150px">票据类型</th>' +
-      '<th style="width:110px">金额（元）</th><th style="width:150px">日期</th><th>备注</th></tr></thead><tbody>' +
+      '<th style="width:110px">金额（元）</th><th style="width:150px">日期</th><th>备注</th>' +
+      '<th style="width:104px">识别来源</th></tr></thead><tbody>' +
       rows.map(function (x, i) {
+        const rc = recOf(x);
         return '<tr><td>' + (i + 1) + '</td><td><div class="rcpt-mini-name" title="' + esc(x.file.name) + '">' + esc(x.file.name) + "</div>" +
           '<div class="muted">' + fmtSize(x.file.size) + "</div></td>" +
-          "<td>" + selectHTML("kind_" + i, "火车票", RECEIPT_KINDS) + "</td>" +
-          '<td><input class="input" name="amount_' + i + '" type="number" min="0" step="0.01" placeholder="0.00"></td>' +
-          '<td><input class="input" name="date_' + i + '" type="date" value="' + todayISO() + '"></td>' +
-          '<td><input class="input" name="note_' + i + '" placeholder="选填"></td></tr>';
+          "<td>" + selectHTML("kind_" + i, rc.kind || "火车票", RECEIPT_KINDS) + "</td>" +
+          '<td><input class="input" name="amount_' + i + '" type="number" min="0" step="0.01" placeholder="0.00"' +
+          (rc.amount != null ? ' value="' + rc.amount + '"' : "") + "></td>" +
+          '<td><input class="input" name="date_' + i + '" type="date" value="' + (rc.date || todayISO()) + '"></td>' +
+          '<td><input class="input" name="note_' + i + '" placeholder="选填" value="' + esc(rc.note || "") + '"></td>' +
+          '<td>' + recogBadgeHTML(rc) +
+          (isPDFFile(x.file) ? "" : ' <span class="link" data-rrecog="' + i + '">重识别</span>') + "</td></tr>";
       }).join("") + "</tbody></table>",
     onSubmit: function (data) {
       if (!trip.receipts) trip.receipts = [];
       rows.forEach(function (x, i) {
+        const rc = recOf(x);
         trip.receipts.push({
           id: uid(),
           kind: data["kind_" + i] || "其他附件",
@@ -477,9 +519,11 @@ function receiptBatchForm(trip, list) {
           date: data["date_" + i] || "",
           note: (data["note_" + i] || "").trim(),
           fileName: x.file.name,
-          fileType: x.file.type || (/pdf$/i.test(x.file.name) ? "application/pdf" : "image/jpeg"),
+          fileType: x.file.type || (isPDFFile(x.file) ? "application/pdf" : "image/jpeg"),
           fileSize: x.file.size,
-          dataUrl: x.dataUrl
+          dataUrl: x.dataUrl,
+          recSource: rc.source || "none",
+          ticketNo: rc.ticketNo || ""
         });
       });
       saveDB(); renderApp();
@@ -500,6 +544,32 @@ function receiptBatchForm(trip, list) {
     sel.addEventListener("change", sync);
     sync();
   });
+
+  /* 单张「重识别」：显式调用 OCR 识别该图片并回填（不依赖全局开关） */
+  $$("[data-rrecog]", overlay).forEach(function (el) {
+    el.addEventListener("click", function () {
+      const i = Number(el.getAttribute("data-rrecog"));
+      const x = rows[i];
+      if (!x || !x.dataUrl) return;
+      el.textContent = "识别中…";
+      ocrImageText(x.dataUrl).then(function (text) {
+        const merged = mergeRecognized(recOf(x), text ? extractReceiptFromText(text) : {}, text ? "ocr" : null);
+        x.rec = merged;
+        const kindSel = $("select[name='kind_" + i + "']", overlay);
+        const amount = $("input[name='amount_" + i + "']", overlay);
+        const date = $("input[name='date_" + i + "']", overlay);
+        const note = $("input[name='note_" + i + "']", overlay);
+        if (merged.kind) kindSel.value = merged.kind;
+        if (merged.amount != null) amount.value = merged.amount;
+        if (merged.date) date.value = merged.date;
+        if (merged.note) note.value = merged.note;
+        /* 触发类型联动：佐证类票据会自动清空金额 */
+        kindSel.dispatchEvent(new Event("change"));
+        el.textContent = text ? "重识别" : "未识别";
+        toast(text ? (merged.amount != null ? "已识别金额 " + fmtMoney(merged.amount) + "，请核对" : "已识别文字但未找到金额，请手动填写") : "未能识别，可到「学期与设置」开启识别引擎后重试");
+      });
+    });
+  });
 }
 
 function receiptForm(trip, receipt) {
@@ -512,7 +582,12 @@ function receiptForm(trip, receipt) {
       fieldHTML("日期", inputHTML("date", receipt.date || todayISO(), { type: "date" })) +
       "</div>" +
       fieldHTML("备注", inputHTML("note", receipt.note || "", { placeholder: "如：去程高铁 G1234" })) +
-      '<div class="hint" style="margin-top:8px">文件：' + esc(receipt.fileName || "未命名") + "（" + fmtSize(receipt.fileSize) + "）</div>",
+      '<div class="form-row" style="align-items:center;margin-top:4px">' +
+      '<div class="field" style="flex:0 0 auto"><button type="button" class="btn btn-light" id="rcpt-recog">重新识别票据</button></div>' +
+      '<div class="field"><span class="muted" id="rcpt-recog-tip">当前来源：' + recogSourceText(receipt.recSource) + "</span></div>" +
+      "</div>" +
+      '<div class="hint">文件：' + esc(receipt.fileName || "未命名") + "（" + fmtSize(receipt.fileSize) + "）" +
+      (receipt.ticketNo ? " · 票号 " + esc(receipt.ticketNo) : "") + "</div>",
     onSubmit: function (data) {
       Object.assign(receipt, {
         kind: data.kind,
@@ -532,6 +607,35 @@ function receiptForm(trip, receipt) {
   };
   sel && sel.addEventListener("change", sync);
   sel && sync();
+
+  /* 重新识别：对已保存的票据再次走识别通道，结果回填表单（不直接落库） */
+  const recogBtn = $("#rcpt-recog", overlay);
+  const recogTip = $("#rcpt-recog-tip", overlay);
+  recogBtn && recogBtn.addEventListener("click", function () {
+    recogBtn.disabled = true;
+    recogBtn.textContent = "识别中…";
+    if (recogTip) recogTip.textContent = "正在读取票据内容…";
+    recognizeStoredReceipt(receipt).then(function (rec) {
+      recogBtn.disabled = false;
+      recogBtn.textContent = "重新识别票据";
+      if (!rec) {
+        if (recogTip) recogTip.textContent = "未能识别内容，请手动填写";
+        toast("未能识别该票据，请手动填写金额");
+        return;
+      }
+      const kindSel = $("select[name='kind']", overlay);
+      const amt = $("input[name='amount']", overlay);
+      const dt = $("input[name='date']", overlay);
+      const nt = $("input[name='note']", overlay);
+      if (rec.kind) kindSel.value = rec.kind;
+      if (rec.amount != null) amt.value = rec.amount;
+      if (rec.date) dt.value = rec.date;
+      if (rec.note) nt.value = rec.note;
+      kindSel && kindSel.dispatchEvent(new Event("change"));
+      if (recogTip) recogTip.textContent = "已识别（" + recogSourceText(rec.source) + "），请核对后保存";
+      toast(rec.amount != null ? "已识别金额 " + fmtMoney(rec.amount) + "，请核对后保存" : "已识别票据信息，但未找到金额");
+    });
+  });
 }
 
 /* 票据预览：图片直接显示，PDF 用内嵌框架（不支持内嵌时提供新窗口打开） */

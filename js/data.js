@@ -10,7 +10,7 @@ function uid() {
 function defaultDB() {
   return {
     meta: { version: 1, createdAt: new Date().toISOString() },
-    settings: { teacherName: "", teacherNo: "", school: "", dept: "", major: "" },
+    settings: { teacherName: "", teacherNo: "", school: "", dept: "", major: "", ocrEnabled: false },
     terms: [],
     students: [],
     courses: [],
@@ -78,7 +78,9 @@ function normalizeSettings() {
   const def = defaultDB().settings;
   if (!DB.settings) DB.settings = {};
   Object.keys(def).forEach(function (k) {
-    if (DB.settings[k] === undefined || DB.settings[k] === null) DB.settings[k] = "";
+    if (DB.settings[k] === undefined || DB.settings[k] === null) {
+      DB.settings[k] = typeof def[k] === "boolean" ? def[k] : "";
+    }
   });
 }
 
@@ -428,14 +430,22 @@ function tripPeople(trip) {
   return Math.max(1, ((trip && trip.members) || []).length || 1);
 }
 
+/* 补助标准（带兜底）：缺字段或非法值时回落到默认标准，避免渲染层因单字段缺失崩溃 */
+function tripStd(trip) {
+  const a = (trip && trip.allowance) || {};
+  const t = Number(a.transport), m = Number(a.meal);
+  return {
+    transport: isNaN(t) ? ALLOWANCE_TRANSPORT : t,
+    meal: isNaN(m) ? ALLOWANCE_MEAL : m
+  };
+}
+
 function tripTransportAllowance(trip) {
-  const std = Number(trip && trip.allowance && trip.allowance.transport);
-  return tripDays(trip) * (isNaN(std) ? ALLOWANCE_TRANSPORT : std) * tripPeople(trip);
+  return tripDays(trip) * tripStd(trip).transport * tripPeople(trip);
 }
 
 function tripMealAllowance(trip) {
-  const std = Number(trip && trip.allowance && trip.allowance.meal);
-  return tripDays(trip) * (isNaN(std) ? ALLOWANCE_MEAL : std) * tripPeople(trip);
+  return tripDays(trip) * tripStd(trip).meal * tripPeople(trip);
 }
 
 function tripAllowanceTotal(trip) {

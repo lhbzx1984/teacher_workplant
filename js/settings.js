@@ -18,6 +18,11 @@ function renderSettings(view) {
     "</div>" +
     '<button class="btn" id="set-save">保存</button></div></div>';
 
+  h += '<div class="card"><div class="card-head"><div class="card-title">票据识别<small style="font-weight:400;margin-left:6px">差旅模块上传票据时自动抽取金额、日期与类型</small></div></div><div class="card-body">' +
+    '<label class="flex" style="gap:8px;font-size:13px;margin-bottom:8px"><input type="checkbox" id="set-ocr"' + (s.ocrEnabled ? " checked" : "") + ">上传图片票据时自动进行文字识别（OCR）</label>" +
+    '<div class="hint">识别按「<b>文件名 → PDF 文本层 → 图片 OCR</b>」三级依次进行：前两级完全离线、始终可用；图片 OCR 需<b>首次联网</b>下载识别引擎（约 3–20MB），之后由浏览器缓存。不开启时，仍可在票据上点「重识别」按需识别单张。<br><b>识别结果仅为建议值，金额一律以实际票据为准</b>，保存前请核对。</div>' +
+    '<button class="btn btn-light" id="ocr-save">保存设置</button></div></div>';
+
   h += '<div class="card"><div class="card-head"><div class="card-title">学期管理</div>' +
     '<button class="btn" id="term-add">新增学期</button></div>' +
     (DB.terms.length ? termsTableHTML() : '<div class="empty">还没有学期，点击“新增学期”开始</div>') +
@@ -160,6 +165,14 @@ function bindSettings(view) {
     saveDB();
     toast("教师信息已保存");
     renderApp();
+  });
+
+  const ocrSave = $("#ocr-save", view);
+  ocrSave && ocrSave.addEventListener("click", function () {
+    const box = $("#set-ocr", view);
+    DB.settings.ocrEnabled = !!(box && box.checked);
+    saveDB();
+    toast(DB.settings.ocrEnabled ? "已开启票据自动识别" : "已关闭票据自动识别");
   });
 
   $("#term-add", view).addEventListener("click", function () { termForm(null); });

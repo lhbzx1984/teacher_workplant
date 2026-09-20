@@ -657,3 +657,7 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .rcpt-sub { font-size: 11.5px; color: var(--ink-2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rcpt-ops { display: flex; gap: 12px; padding: 7px 10px; border-top: 1px solid var(--line); font-size: 12px; }
 .rcpt-mini-name { font-size: 12.5px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== 票据识别来源标记 ===== */
+.rcpt-src { opacity: .72; }
+.rcpt-card .rcpt-ops .link { cursor: pointer; }
