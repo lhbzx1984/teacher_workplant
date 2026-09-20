@@ -642,3 +642,18 @@ pre.code { background: var(--surface-2); border: 1px solid var(--line); border-r
 .gdm-file { border: 1px solid var(--ok-line); background: var(--surface); color: var(--ink-2); border-radius: 7px; padding: 7px 12px; font-size: 11.5px; display: inline-block; }
 .gdm-file b { color: var(--ok); margin-right: 5px; }
 
+
+/* ===== 差旅票据与附件 ===== */
+.rcpt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 4px 18px 16px; }
+.rcpt-card { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+.rcpt-thumb { height: 118px; background: var(--surface-2); border-bottom: 1px solid var(--line); cursor: pointer; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rcpt-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rcpt-thumb:hover { opacity: .86; }
+.rcpt-thumb.rcpt-pdf { background: var(--gold-tint); }
+.rcpt-pdf-tag { font-size: 12px; font-weight: 600; color: var(--gold-strong); letter-spacing: .08em; }
+.rcpt-meta { padding: 8px 10px; flex: 1; min-width: 0; }
+.rcpt-kind { margin-bottom: 5px; }
+.rcpt-name { font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcpt-sub { font-size: 11.5px; color: var(--ink-2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcpt-ops { display: flex; gap: 12px; padding: 7px 10px; border-top: 1px solid var(--line); font-size: 12px; }
+.rcpt-mini-name { font-size: 12.5px; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

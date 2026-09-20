@@ -42,6 +42,8 @@ function renderDashboard(view) {
     '<small style="font-weight:400;margin-left:6px">月视图 · 课程时段与特殊日程 · 已上 / 进行中 / 未上状态随时间自动刷新</small></div></div>' +
     '<div id="cal-box">' + calendarMonthHTML() + "</div></div>";
 
+  h += tripMiniHTML();
+
   h += '<div class="card"><div class="card-head"><div class="card-title">待跟进台账</div><span class="muted">班主任工作 · 谈话 / 走访后续</span></div>' + followUpListHTML() + "</div>";
 
   view.innerHTML = h;
@@ -285,6 +287,28 @@ function followUpListHTML() {
         "<td>" + esc(l.followUp) + "</td>" +
         '<td><span class="link" data-log-done="' + l.id + '">完成</span></td></tr>';
     }).join("") + "</tbody></table>";
+}
+
+/* 差旅与报销快照：最近 5 个差旅项目 + 报销状态 */
+function tripMiniHTML() {
+  const trips = (DB.trips || []).slice().sort(function (a, b) { return (a.startDate || "") < (b.startDate || "") ? 1 : -1; }).slice(0, 5);
+  let h = '<div class="card"><div class="card-head"><div class="card-title">差旅与报销<small style="font-weight:400;margin-left:6px">票据上传 · 市内交通 80 / 餐补 100 每人每天自动核算</small></div>' +
+    '<button class="btn btn-light btn-sm" data-go="trips">进入管理</button></div>';
+  if (!trips.length) {
+    h += '<div class="empty" style="padding:24px">还没有差旅项目——<span class="link" data-go="trips">新建差旅项目</span>，可添加人员、上传票据并自动生成报销单</div>';
+  } else {
+    h += '<table class="tbl"><thead><tr><th>项目</th><th>类型</th><th>时间</th><th>人员</th><th>费用合计</th><th>报销状态</th></tr></thead><tbody>' +
+      trips.map(function (t) {
+        const r = DB.reimbursements.find(function (x) { return x.tripId === t.id; });
+        return '<tr class="clickable" data-go="trip/' + t.id + '"><td><b>' + esc(t.name) + "</b></td>" +
+          "<td>" + badge(t.type, tripTypeColor(t.type)) + "</td>" +
+          "<td>" + esc(t.startDate || "-") + " ~ " + esc(t.endDate || "-") + "（" + tripDays(t) + " 天）</td>" +
+          "<td>" + (t.members || []).length + " 人</td>" +
+          "<td>" + fmtMoney(tripTotal(t)) + "</td>" +
+          "<td>" + (r ? badge(r.status, reimStatusColor(r.status)) : '<span class="muted">未生成</span>') + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  }
+  return h + "</div>";
 }
 
 function courseMiniTable(courses) {

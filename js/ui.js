@@ -156,8 +156,8 @@ function levelBadge(level) {
 }
 
 function statusBadge(text) {
-  if (text === "在研" || text === "报名中" || text === "备赛中") return badge(text, "blue");
-  if (text === "已结题" || text === "已获奖" || text === "已结束") return badge(text, "green");
+  if (text === "在研" || text === "报名中" || text === "备赛中" || text === "进行中") return badge(text, "blue");
+  if (text === "已结题" || text === "已获奖" || text === "已结束" || text === "已完成") return badge(text, "green");
   return badge(text || "-", "gray");
 }
 

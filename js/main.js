@@ -8,6 +8,8 @@ const NAV_ITEMS = [
   { page: "students", title: "学生管理", id: "students" },
   { page: "competitions", title: "学科竞赛", id: "competitions" },
   { page: "projects", title: "科研项目", id: "projects" },
+  { page: "trips", title: "差旅项目", id: "trips" },
+  { page: "finance", title: "财务报销", id: "finance" },
   { group: "汇总" },
   { page: "summary", title: "考核汇总", id: "summary" },
   { group: "系统" },
@@ -33,7 +35,8 @@ function renderNav() {
 function renderTopbar() {
   const titles = {
     dashboard: "仪表盘", courses: "课程教学", students: "班主任学生管理",
-    competitions: "学科竞赛", projects: "科研项目", summary: "考核汇总", settings: "学期与设置"
+    competitions: "学科竞赛", projects: "科研项目", trips: "差旅项目",
+    finance: "财务报销", summary: "考核汇总", settings: "学期与设置"
   };
   const cur = parseHash();
   $("#topbar-title").textContent = titles[cur.page] || "教师工作台";
@@ -87,6 +90,9 @@ function renderApp() {
   else if (cur.page === "comp" && cur.id) renderCompDetail(view, cur.id);
   else if (cur.page === "projects") renderProjects(view);
   else if (cur.page === "project" && cur.id) renderProjectDetail(view, cur.id);
+  else if (cur.page === "trips") renderTrips(view);
+  else if (cur.page === "trip" && cur.id) renderTripDetail(view, cur.id);
+  else if (cur.page === "finance") renderFinance(view);
   else if (cur.page === "summary") renderSummary(view);
   else { location.hash = "#/dashboard"; return; }
 

@@ -26,7 +26,9 @@ function defaultDB() {
     projects: [],
     outputs: [],
     expenses: [],
-    events: []
+    events: [],
+    trips: [],
+    reimbursements: []
   };
 }
 
@@ -55,6 +57,22 @@ function normalizeCourses() {
   });
 }
 
+/* 旧数据迁移：补齐差旅项目缺失字段（members / receipts / allowance / status） */
+function normalizeTrips() {
+  (DB.trips || []).forEach(function (t) {
+    if (!Array.isArray(t.members)) t.members = [];
+    if (!Array.isArray(t.receipts)) t.receipts = [];
+    if (!t.allowance) t.allowance = { transport: ALLOWANCE_TRANSPORT, meal: ALLOWANCE_MEAL };
+    if (typeof t.allowance.transport !== "number") t.allowance.transport = ALLOWANCE_TRANSPORT;
+    if (typeof t.allowance.meal !== "number") t.allowance.meal = ALLOWANCE_MEAL;
+    if (!t.status) t.status = "计划中";
+  });
+  (DB.reimbursements || []).forEach(function (r) {
+    if (!Array.isArray(r.items)) r.items = [];
+    if (!r.status) r.status = "待提交";
+  });
+}
+
 /* 教师信息字段迁移：补全新增字段（school / major），确保旧数据结构完整 */
 function normalizeSettings() {
   const def = defaultDB().settings;
@@ -75,6 +93,7 @@ function loadDB() {
       }
       normalizeSettings();
       normalizeCourses();
+      normalizeTrips();
     } else {
       DB = seedDemo();
       saveDB();
@@ -357,6 +376,84 @@ function sum(arr, fn) {
   return arr.reduce(function (a, b) { return a + (fn ? Number(fn(b)) || 0 : Number(b) || 0); }, 0);
 }
 
+/* ===================== 差旅项目与财务报销 ===================== */
+
+/* 差旅项目类型 */
+const TRIP_TYPES = ["师资培训", "访企拓岗", "校友会走访", "招生咨询", "实习基地参观"];
+const TRIP_STATUS = ["计划中", "进行中", "已完成"];
+const TRIP_TYPE_COLOR = {
+  "师资培训": "blue", "访企拓岗": "teal", "校友会走访": "purple",
+  "招生咨询": "amber", "实习基地参观": "green"
+};
+function tripTypeColor(type) {
+  return TRIP_TYPE_COLOR[type] || "gray";
+}
+
+/* 票据 / 附件类型：前六类可计入报销金额，邀请函与其他附件仅作佐证材料 */
+const RECEIPT_KINDS = ["火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据", "其他票据", "会议邀请函", "其他附件"];
+const RECEIPT_BILLABLE = ["火车票", "飞机票", "住宿票据", "市内交通票据", "餐饮票据", "其他票据"];
+
+/* 每日补助标准（元 / 人 · 天）：市内交通 80，餐费 100 */
+const ALLOWANCE_TRANSPORT = 80;
+const ALLOWANCE_MEAL = 100;
+
+/* 报销单状态 */
+const REIM_STATUS = ["待提交", "审批中", "已报销", "已驳回"];
+function reimStatusColor(status) {
+  if (status === "已报销") return "green";
+  if (status === "审批中") return "blue";
+  if (status === "已驳回") return "red";
+  return "amber";
+}
+
+function getTrip(id) {
+  return (DB.trips || []).find(function (t) { return t.id === id; }) || null;
+}
+
+function getReimbursement(id) {
+  return (DB.reimbursements || []).find(function (r) { return r.id === id; }) || null;
+}
+
+/* 差旅天数：含首尾两天；日期缺失或不合法返回 0 */
+function tripDays(trip) {
+  if (!trip || !trip.startDate || !trip.endDate) return 0;
+  const a = parseISO(trip.startDate), b = parseISO(trip.endDate);
+  if (!a || !b) return 0;
+  const n = Math.round((b - a) / 86400000) + 1;
+  return n > 0 ? n : 0;
+}
+
+/* 补助按「人数 × 天数 × 标准」计算；未添加人员时按 1 人计 */
+function tripPeople(trip) {
+  return Math.max(1, ((trip && trip.members) || []).length || 1);
+}
+
+function tripTransportAllowance(trip) {
+  const std = Number(trip && trip.allowance && trip.allowance.transport);
+  return tripDays(trip) * (isNaN(std) ? ALLOWANCE_TRANSPORT : std) * tripPeople(trip);
+}
+
+function tripMealAllowance(trip) {
+  const std = Number(trip && trip.allowance && trip.allowance.meal);
+  return tripDays(trip) * (isNaN(std) ? ALLOWANCE_MEAL : std) * tripPeople(trip);
+}
+
+function tripAllowanceTotal(trip) {
+  return tripTransportAllowance(trip) + tripMealAllowance(trip);
+}
+
+/* 票据金额合计：仅统计可报销类型且填写了金额的票据 */
+function tripReceiptTotal(trip) {
+  return sum(((trip && trip.receipts) || []).filter(function (r) {
+    return RECEIPT_BILLABLE.indexOf(r.kind) >= 0;
+  }), function (r) { return r.amount; });
+}
+
+/* 差旅总费用 = 票据金额 + 补助 */
+function tripTotal(trip) {
+  return tripReceiptTotal(trip) + tripAllowanceTotal(trip);
+}
+
 /* ===================== 备份与恢复 ===================== */
 
 function exportJSONBackup() {
@@ -382,6 +479,7 @@ function importJSONBackup(file, done) {
       for (const k of Object.keys(def)) if (DB[k] === undefined) DB[k] = def[k];
       normalizeSettings();
       normalizeCourses();
+      normalizeTrips();
       saveDB();
       toast("数据已恢复");
       done && done();
