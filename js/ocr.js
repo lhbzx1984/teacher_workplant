@@ -10,13 +10,26 @@ const OCR_LANG = "chi_sim+eng";
 
 /* 票据类型关键词：按顺序命中，越靠前优先级越高。
    含增值税发票的「税收分类项目名称」写法（航空运输 / 住宿服务 等），
-   真实电子发票多用这套词，而非「机票」「饭店」等口语词。 */
+   真实电子发票多用这套词，而非「机票」「饭店」等口语词。
+   采购类（器件耗材 / 设备器材 / 资料图书 / 软件服务 / 报名费 / 专家评审费）为竞赛经费场景而设：
+   顺序上把「器件耗材」排在「资料图书」之前——「3D 打印耗材」两类都会命中一词，
+   并列时靠前者胜出，而它更贴近器件采购。
+   会议邀请函放最后：它是佐证材料，与可报销类别并列时应让后者胜出。 */
 const KIND_KEYWORDS = [
   ["火车票", ["火车票", "高铁", "动车", "铁路", "车票", "检票口", "车次", "列车", "railway", "train"]],
   ["飞机票", ["飞机票", "登机牌", "航班", "电子客票", "机票", "值机", "航段", "航空运输", "民用航空", "民航", "boarding", "flight", "airline"]],
   ["住宿票据", ["住宿", "酒店", "宾馆", "客房", "房费", "住宿费", "旅店", "hotel", "inn"]],
   ["市内交通票据", ["出租车", "网约车", "滴滴", "地铁", "公交", "打车", "市内交通", "出租汽车", "taxi"]],
   ["餐饮票据", ["餐饮", "餐费", "就餐", "餐厅", "饭店", "食品", "餐饮费"]],
+  ["器件耗材票据", ["元器件", "电子元器件", "电子元件", "元件", "耗材", "传感器", "模块", "开发板", "芯片", "电阻", "电容",
+    "线材", "导线", "电池", "电机", "舵机", "继电器", "面包板", "实验耗材", "打印耗材", "3d打印", "3d打印耗材", "配件",
+    "arduino", "raspberry", "stm32", "sensor", "module", "component"]],
+  ["设备器材票据", ["设备费", "实验台", "仪器仪表", "设备", "仪器", "仪表", "器材", "工器具", "器械", "equipment"]],
+  ["资料图书票据", ["图书", "书籍", "教材", "报刊", "资料费", "印刷", "打印", "装订", "复印", "文印", "资料"]],
+  ["软件服务票据", ["软件", "授权", "license", "云服务", "云主机", "服务器", "域名", "会员", "订阅", "技术服务",
+    "信息服务", "加工服务", "设计服务", "软件服务", "software", "saas"]],
+  ["竞赛报名费", ["报名费", "参赛费", "竞赛报名", "赛事服务", "参赛报名"]],
+  ["专家评审费", ["评审费", "评审专家", "专家费", "劳务费", "咨询费", "鉴定费", "答辩费"]],
   ["会议邀请函", ["邀请函", "邀请", "会议通知", "报到通知", "invitation"]]
 ];
 
@@ -178,6 +191,30 @@ function pickTicketNoFromText(text) {
   return null;
 }
 
+/* 品名抽取：采购类发票上的「货物或应税劳务、服务名称」。
+   为什么值得做：竞赛经费的票据多为器件耗材发票，报销时最需要的是「买了什么」，
+   而票面上的品名比文件名更可靠——文件名常常只是「发票.pdf」。 */
+const ITEM_NAME_ANCHOR = "(?:货物或应税劳务[、,，]?服务名称|货物或应税劳务名称|货物名称|商品名称|项目名称|品名|名称)";
+/* 无意义占位：销货清单另开时品名栏会写这类套话 */
+const ITEM_NAME_JUNK = ["详见销货清单", "详见清单", "见清单", "详见", "无"];
+
+/* 品名结束标记：遇到下一个字段标签就停（非贪婪 + 前瞻，品名里允许出现数字） */
+const ITEM_NAME_STOP = "(?:规格|型号|单位|数量|单价|金额|税率|税额|备注|价税|\\||\\/)";
+
+function pickItemNameFromText(text) {
+  const flat = normText(text);
+  if (!flat) return "";
+  /* PDF 常把标签逐字渲染（"货 物 名 称"），故用去空格副本匹配 */
+  const tight = flat.replace(/\s+/g, "");
+  const re = new RegExp(ITEM_NAME_ANCHOR + "[:：]*([\\s\\S]{2,24}?)(?=" + ITEM_NAME_STOP + "|$)");
+  const m = tight.match(re) || flat.match(re);
+  if (!m) return "";
+  let s = String(m[1] || "").replace(/[*＊]+/g, " ").replace(/\s+/g, " ").trim();
+  if (s.length < 2) return "";
+  if (ITEM_NAME_JUNK.indexOf(s) >= 0) return "";
+  return s.slice(0, 24);
+}
+
 /* 从一段文本中抽取全部票据要素 */
 function extractReceiptFromText(text) {
   const flat = normText(text);
@@ -185,7 +222,8 @@ function extractReceiptFromText(text) {
     amount: pickAmountFromText(flat),
     date: pickDateFromText(flat),
     kind: pickKindFromText(flat),
-    ticketNo: pickTicketNoFromText(flat)
+    ticketNo: pickTicketNoFromText(flat),
+    itemName: pickItemNameFromText(flat)
   };
 }
 
@@ -754,9 +792,15 @@ function mergeRecognized(base, extra, source) {
     if (extra.ticketNo) out.ticketNo = extra.ticketNo;
   }
   if (source && (SOURCE_RANK[source] || 0) > (SOURCE_RANK[out.source] || 0)) out.source = source;
-  /* 票号并入备注，便于人工核对 */
+  /* 品名与票号并入备注，便于人工核对：品名在前（报销时最关心「买了什么」） */
+  let note = out.note || "";
+  if (extra && extra.itemName) {
+    const nm = String(extra.itemName).trim();
+    if (nm && note.indexOf(nm) < 0) note = (nm + " " + note).trim();
+  }
   const no = out.ticketNo || "";
-  if (no && out.note.indexOf(no) < 0) out.note = (no + " " + out.note).trim().slice(0, 40);
+  if (no && note.indexOf(no) < 0) note = (no + " " + note).trim();
+  out.note = note.slice(0, 40);
   out.confidence = out.amount != null ? "high" : (out.kind || out.date ? "mid" : "low");
   return out;
 }

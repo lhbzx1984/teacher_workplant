@@ -5,6 +5,18 @@ let compTab = "info";
 const COMP_LEVELS = ["国家级", "省级", "市厅级", "校级"];
 const COMP_STATUS = ["报名中", "备赛中", "初赛", "决赛", "已结束"];
 
+/* 竞赛详情四个页签：经费与票据复用差旅那套票据能力，只是类别换成采购类 */
+const COMP_TABS = [["info", "概览"], ["teams", "参赛团队"], ["results", "获奖成果"], ["expense", "经费与票据"]];
+
+const COMP_RECEIPT_OPTS = {
+  kinds: RECEIPT_KINDS_COMP,
+  defaultKind: "器件耗材票据",
+  notePlaceholder: "如：Arduino 开发板 ×5 / 3D 打印耗材",
+  hint: "支持图片（JPG/PNG，自动压缩）与 PDF 文件。上传时会<b>自动识别</b>票据类别、金额与日期" +
+    "（文件名 → PDF 文本层 → 图片 OCR）；器件耗材、设备器材、资料图书、软件服务、报名费等发票会归入对应类别，" +
+    "发票上的品名也会自动填进备注，识别结果请核对。"
+};
+
 function renderCompetitions(view) {
   const list = DB.competitions.slice().sort(function (a, b) {
     return (a.regDeadline || "") < (b.regDeadline || "") ? -1 : 1;
@@ -16,10 +28,12 @@ function renderCompetitions(view) {
   if (!list.length) {
     h += '<div class="card"><div class="empty">还没有竞赛项目，把常带的赛事先录入进来</div></div>';
   } else {
-    h += '<div class="card"><table class="tbl"><thead><tr><th>竞赛名称</th><th>级别</th><th>报名截止</th><th>决赛时间</th><th>状态</th><th>团队</th><th>获奖</th><th style="width:110px">操作</th></tr></thead><tbody>';
+    h += '<div class="card"><table class="tbl"><thead><tr><th>竞赛名称</th><th>级别</th><th>报名截止</th><th>决赛时间</th><th>状态</th><th>团队</th><th>获奖</th><th style="width:96px">经费</th><th style="width:110px">操作</th></tr></thead><tbody>';
     list.forEach(function (c) {
       const teams = DB.teams.filter(function (t) { return t.competitionId === c.id; });
       const results = DB.compResults.filter(function (r) { return r.competitionId === c.id; });
+      const spent = compReceiptTotal(c);
+      const budget = compBudgetOf(c);
       const d = daysUntil(c.regDeadline);
       const regHint = d !== null && d >= 0 && d <= 14 && c.status !== "已结束" ? badge(d === 0 ? "今天截止" : d + " 天后截止", "red") : "";
       h += '<tr class="clickable" data-go="comp/' + c.id + '"><td><b>' + esc(c.name) + '</b> <span class="muted">' + esc(c.organizer || "") + "</span>" +
@@ -27,6 +41,8 @@ function renderCompetitions(view) {
         "<td>" + levelBadge(c.level) + "</td>" +
         "<td>" + esc(c.regDeadline || "-") + " " + regHint + "</td><td>" + esc(c.finalDate || "-") + "</td>" +
         "<td>" + statusBadge(c.status) + "</td><td>" + teams.length + "</td><td>" + results.length + "</td>" +
+        "<td>" + (spent ? fmtMoney(spent) + (budget ? '<div class="muted">预算 ' + fmtMoney(budget) + "</div>" : '<div class="muted">未设预算</div>')
+          : '<span class="muted">—</span>') + "</td>" +
         '<td><span class="flex" style="gap:10px"><span class="link" data-comp-edit="' + c.id + '">编辑</span><span class="link" data-comp-del="' + c.id + '">删除</span></span></td></tr>';
     });
     h += "</tbody></table></div>";
@@ -84,7 +100,10 @@ function competitionForm(comp) {
       fieldHTML("决赛/国赛时间", inputHTML("finalDate", comp ? comp.finalDate : "", { type: "date" })) +
       "</div>" +
       fieldHTML("官网", inputHTML("website", comp ? comp.website : "", { placeholder: "https://" })) +
-      fieldHTML("备注", textareaHTML("note", comp ? comp.note : "", { rows: 2, placeholder: "如：个人赛，每生限报一个组别" })) +
+      '<div class="form-row">' +
+      fieldHTML("经费预算（元）", inputHTML("budget", comp && comp.budget ? comp.budget : "", { type: "number", attrs: ' min="0" step="100"', placeholder: "选填，用于经费执行率统计" })) +
+      fieldHTML("备注", inputHTML("note", comp ? comp.note : "", { placeholder: "如：个人赛，每生限报一个组别" })) +
+      "</div>" +
       fieldHTML("同步到日历（跟踪）", '<div class="flex" style="gap:18px;flex-wrap:wrap;font-size:13px">' +
         '<label class="flex" style="gap:6px"><input type="checkbox" name="trackReg"' + (comp && comp.trackReg ? " checked" : "") + ">跟踪<b>报名截止</b></label>" +
         '<label class="flex" style="gap:6px"><input type="checkbox" name="trackFinal"' + (comp && comp.trackFinal ? " checked" : "") + ">跟踪<b>决赛时间</b></label>" +
@@ -97,6 +116,7 @@ function competitionForm(comp) {
         name: data.name.trim(), level: data.level, status: data.status,
         organizer: data.organizer.trim(), regDeadline: data.regDeadline,
         finalDate: data.finalDate, website: data.website.trim(), note: data.note.trim(),
+        budget: Number(data.budget) || 0,
         trackReg: !!data.trackReg, trackFinal: !!data.trackFinal
       };
       if (comp) { Object.assign(comp, payload); toast("竞赛已更新"); }
@@ -120,8 +140,12 @@ function bindCompetitions(view) {
       e.stopPropagation();
       const c = getCompetition(el.getAttribute("data-comp-del"));
       const n = DB.teams.filter(function (t) { return t.competitionId === c.id; }).length + DB.compResults.filter(function (r) { return r.competitionId === c.id; }).length;
+      const hasReim = (DB.reimbursements || []).some(function (r) {
+        return (r.sourceType || (r.tripId ? "trip" : "")) === "competition" && (r.sourceId || r.tripId) === c.id;
+      });
       confirmModal("确定删除竞赛 <b>" + esc(c.name) + "</b>？" +
-        (n ? "<br><span style='color:var(--red-600)'>该赛事下有 " + n + " 条团队/获奖记录，将一并删除。</span>" : ""), function () {
+        (n ? "<br><span style='color:var(--red-600)'>该赛事下有 " + n + " 条团队/获奖记录，将一并删除。</span>" : "") +
+        (hasReim ? "<br><span style='color:var(--red-600)'>已生成的报销单不会删除，但会失去关联来源。</span>" : ""), function () {
         DB.competitions = DB.competitions.filter(function (x) { return x.id !== c.id; });
         DB.teams = DB.teams.filter(function (t) { return t.competitionId !== c.id; });
         DB.compResults = DB.compResults.filter(function (r) { return r.competitionId !== c.id; });
@@ -136,6 +160,8 @@ function bindCompetitions(view) {
 function renderCompDetail(view, compId) {
   const c = getCompetition(compId);
   if (!c) { view.innerHTML = '<div class="empty">竞赛不存在<button class="btn btn-light btn-sm" data-go="competitions" style="margin-top:14px">返回</button></div>'; return; }
+  /* 页签状态跨竞赛保留，但必须落在合法范围内 */
+  compTab = COMP_TABS.some(function (t) { return t[0] === compTab; }) ? compTab : "info";
 
   const teams = DB.teams.filter(function (t) { return t.competitionId === c.id; });
   const results = DB.compResults.filter(function (r) { return r.competitionId === c.id; });
@@ -147,7 +173,37 @@ function renderCompDetail(view, compId) {
 
   const regD = daysUntil(c.regDeadline);
   const finD = daysUntil(c.finalDate);
-  h += '<div class="card"><div class="card-body"><div class="kv">' +
+  const budget = compBudgetOf(c);
+  const spent = compReceiptTotal(c);
+
+  h += '<div class="tabs">' + COMP_TABS.map(function (t) {
+    return '<div class="tab' + (compTab === t[0] ? " active" : "") + '" data-comp-tab="' + t[0] + '">' + t[1] +
+      (t[0] === "teams" && teams.length ? " " + teams.length : "") +
+      (t[0] === "results" && results.length ? " " + results.length : "") +
+      (t[0] === "expense" ? (spent ? " " + fmtMoney(spent) : "") : "") +
+      (t[0] === "info" && budget ? " " + fmtMoney(budget) : "") +
+      "</div>";
+  }).join("") + "</div>";
+
+  h += '<div id="comp-tab-body">' + compTabBodyHTML(c, teams, results) + "</div>";
+
+  view.innerHTML = h;
+  bindCompDetail(view, c);
+}
+
+function compTabBodyHTML(c, teams, results) {
+  if (compTab === "teams") return compTeamsHTML(c, teams || []);
+  if (compTab === "results") return compResultsHTML(c, results || []);
+  if (compTab === "expense") return compExpenseHTML(c);
+  return compInfoHTML(c);
+}
+
+function compInfoHTML(c) {
+  const regD = daysUntil(c.regDeadline);
+  const finD = daysUntil(c.finalDate);
+  const budget = compBudgetOf(c);
+  const spent = compReceiptTotal(c);
+  return '<div class="card"><div class="card-body"><div class="kv">' +
     "<div class='k'>主办单位</div><div>" + esc(c.organizer || "-") + "</div>" +
     "<div class='k'>报名截止</div><div>" + esc(c.regDeadline || "-") +
     (regD !== null && regD >= 0 && c.status !== "已结束" ? "（" + (regD === 0 ? "今天" : regD + " 天后") + "）" : "") +
@@ -155,41 +211,111 @@ function renderCompDetail(view, compId) {
     "<div class='k'>决赛时间</div><div>" + esc(c.finalDate || "-") +
     (finD !== null && finD >= 0 ? "（" + (finD === 0 ? "今天" : finD + " 天后") + "）" : "") +
     (c.trackFinal ? ' <span class="badge badge-red">跟踪中</span> <span class="link" data-comp-track-final>取消跟踪</span>' : ' <span class="link" data-comp-track-final>跟踪到日历</span>') + "</div>" +
+    "<div class='k'>经费预算</div><div>" +
+    (budget ? fmtMoney(budget) + '<span class="muted"> · 已用 ' + fmtMoney(spent) + "，剩余 " + fmtMoney(budget - spent) + "</span>"
+      : '<span class="muted">未设置</span>') +
+    ' <span class="link" id="comp-budget">' + (budget ? "调整" : "设置") + "</span></div>" +
     "<div class='k'>备注</div><div>" + esc(c.note || "-") + "</div>" +
     "</div></div></div>";
+}
 
-  h += '<div class="grid grid-2">';
-  h += '<div class="card"><div class="card-head"><div class="card-title">参赛团队（' + teams.length + "）</div>" +
+function compTeamsHTML(c, teams) {
+  let h = '<div class="card"><div class="card-head"><div class="card-title">参赛团队（' + teams.length + "）</div>" +
     '<button class="btn btn-sm" id="team-add">新建团队</button></div>';
-  if (!teams.length) h += '<div class="empty" style="padding:22px">还没有组队</div>';
-  else {
-    h += '<table class="tbl"><thead><tr><th>团队</th><th>成员</th><th>赛道</th><th>状态</th><th style="width:90px">操作</th></tr></thead><tbody>';
-    teams.forEach(function (t) {
-      const names = (t.members || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
-      h += "<tr><td><b>" + esc(t.name) + "</b></td><td>" + esc(names || "-") + "</td><td>" + esc(t.entryRole || "-") + "</td><td>" + statusBadge(t.status) + "</td>" +
-        '<td><span class="flex" style="gap:10px"><span class="link" data-team-edit="' + t.id + '">编辑</span><span class="link" data-team-del="' + t.id + '">删除</span></span></td></tr>';
-    });
-    h += "</tbody></table>";
-  }
-  h += "</div>";
+  if (!teams.length) return h + '<div class="empty" style="padding:22px">还没有组队</div></div>';
+  h += '<table class="tbl"><thead><tr><th>团队</th><th>成员</th><th>赛道</th><th>状态</th><th style="width:90px">操作</th></tr></thead><tbody>';
+  teams.forEach(function (t) {
+    const names = (t.members || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
+    h += "<tr><td><b>" + esc(t.name) + "</b></td><td>" + esc(names || "-") + "</td><td>" + esc(t.entryRole || "-") + "</td><td>" + statusBadge(t.status) + "</td>" +
+      '<td><span class="flex" style="gap:10px"><span class="link" data-team-edit="' + t.id + '">编辑</span><span class="link" data-team-del="' + t.id + '">删除</span></span></td></tr>';
+  });
+  return h + "</tbody></table></div>";
+}
 
-  h += '<div class="card"><div class="card-head"><div class="card-title">获奖成果（' + results.length + "）</div>" +
+function compResultsHTML(c, results) {
+  let h = '<div class="card"><div class="card-head"><div class="card-title">获奖成果（' + results.length + "）</div>" +
     '<button class="btn btn-sm" id="result-add">登记获奖</button></div>';
-  if (!results.length) h += '<div class="empty" style="padding:22px">暂无获奖记录</div>';
-  else {
-    h += '<table class="tbl"><thead><tr><th style="width:96px">日期</th><th>获奖</th><th>学生</th><th>证书编号</th><th style="width:60px">操作</th></tr></thead><tbody>';
-    results.forEach(function (r) {
-      const names = (r.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
-      h += "<tr><td>" + esc(r.date) + "</td><td><b>" + esc(r.teamName) + "</b> " + badge(r.level, "amber") + "</td>" +
-        "<td>" + esc(names) + "</td><td>" + esc(r.certNo || "-") + "</td>" +
-        '<td><span class="link" data-result-del="' + r.id + '">删除</span></td></tr>';
-    });
-    h += "</tbody></table>";
-  }
-  h += "</div></div>";
+  if (!results.length) return h + '<div class="empty" style="padding:22px">暂无获奖记录</div></div>';
+  h += '<table class="tbl"><thead><tr><th style="width:96px">日期</th><th>获奖</th><th>学生</th><th>证书编号</th><th style="width:60px">操作</th></tr></thead><tbody>';
+  results.forEach(function (r) {
+    const names = (r.studentIds || []).map(function (id) { const s = getStudent(id); return s ? s.name : ""; }).filter(Boolean).join("、");
+    h += "<tr><td>" + esc(r.date) + "</td><td><b>" + esc(r.teamName) + "</b> " + badge(r.level, "amber") + "</td>" +
+      "<td>" + esc(names) + "</td><td>" + esc(r.certNo || "-") + "</td>" +
+      '<td><span class="link" data-result-del="' + r.id + '">删除</span></td></tr>';
+  });
+  return h + "</tbody></table></div>";
+}
 
-  view.innerHTML = h;
-  bindCompDetail(view, c);
+/* ===================== 竞赛经费与票据 ===================== */
+
+function compExpenseHTML(c) {
+  const total = compReceiptTotal(c);
+  const material = compMaterialTotal(c);
+  const travel = compTravelTotal(c);
+  const budget = compBudgetOf(c);
+  const byKind = compExpenseByKind(c);
+  const reim = (DB.reimbursements || []).find(function (r) {
+    return (r.sourceType || (r.tripId ? "trip" : "")) === "competition" && (r.sourceId || r.tripId) === c.id;
+  });
+
+  let h = '<div class="grid grid-4">' +
+    statCard("票据合计", fmtMoney(total), "", ((c.receipts || []).length) + " 个票据 / 附件") +
+    statCard("器件器材类", fmtMoney(material), "", "器件耗材 · 设备器材 · 资料图书 · 软件服务") +
+    statCard("参赛差旅类", fmtMoney(travel), "", "交通 · 住宿 · 市内交通 · 餐饮") +
+    statCard("经费预算", budget ? fmtMoney(budget) : "未设置", "",
+      budget ? (total > budget ? "已超支 " + fmtMoney(total - budget) : "剩余 " + fmtMoney(budget - total)) : "点下方「设置预算」填写") +
+    "</div>";
+
+  /* 预算执行条：有预算才显示，超支转红 */
+  if (budget) {
+    const pct = Math.min(100, Math.round(total / budget * 100));
+    h += '<div class="card"><div class="card-body">' +
+      '<div class="hbar-row"><div class="hbar-label">预算执行</div>' +
+      '<div class="hbar-track"><div class="hbar-fill' + (total > budget ? " hbar-fill-danger" : "") + '" style="width:' + pct + '%">' + pct + "%</div></div>" +
+      '<div class="muted" style="font-size:12px">' + fmtMoney(total) + " / " + fmtMoney(budget) + "</div></div>" +
+      "</div></div>";
+  }
+
+  h += '<div class="card"><div class="card-head"><div class="card-title">经费汇总</div>' +
+    '<span class="flex" style="gap:8px"><button class="btn btn-light btn-sm" id="comp-budget-2">设置预算</button>' +
+    '<button class="btn btn-sm" id="comp-reim">' + (reim ? "重新生成报销单" : "生成报销单") + "</button></span></div>" +
+    '<table class="tbl"><tbody>' +
+    "<tr><th style=\"width:150px\">器件器材类</th><td>" + fmtMoney(material) + "</td></tr>" +
+    "<tr><th>参赛差旅类</th><td>" + fmtMoney(travel) + "</td></tr>" +
+    '<tr><th>合计</th><td><b style="font-size:15px">' + fmtMoney(total) + "</b></td></tr>" +
+    "<tr><th>报销单</th><td>" + (reim
+      ? '<span class="link" data-go="finance">' + esc(reim.no) + "</span> · " + badge(reim.status, reimStatusColor(reim.status)) + " · " + fmtMoney(reim.amount)
+      : '<span class="muted">尚未生成</span>') + "</td></tr>" +
+    "</tbody></table></div>";
+
+  if (byKind.length) {
+    h += '<div class="card"><div class="card-head"><div class="card-title">按类别汇总</div></div>' +
+      '<table class="tbl"><thead><tr><th>类别</th><th style="width:80px">张数</th><th style="width:120px">金额</th><th style="width:140px">占比</th></tr></thead><tbody>';
+    byKind.forEach(function (k) {
+      const pct = total ? Math.round(k.amount / total * 100) : 0;
+      h += "<tr><td>" + badge(k.kind, receiptKindColor(k.kind)) + "</td><td>" + k.count + "</td><td>" + fmtMoney(k.amount) + "</td>" +
+        '<td><div class="hbar-track" style="height:8px"><div class="hbar-fill" style="width:' + pct + '%"></div></div> ' + pct + "%</td></tr>";
+    });
+    h += "</tbody></table></div>";
+  }
+
+  /* 票据墙：与差旅共用同一套上传 / 识别 / 预览能力 */
+  h += receiptsGridHTML(c, COMP_RECEIPT_OPTS);
+  return h;
+}
+
+/* 预算设置：只管一个数字，单独弹窗避免与竞赛表单耦合 */
+function compBudgetForm(c) {
+  formModal({
+    title: "设置经费预算 · " + c.name,
+    body:
+      '<div class="hint" style="margin-bottom:10px">预算仅用于经费页的<b>执行率统计</b>，不影响报销单金额。</div>' +
+      fieldHTML("经费预算（元）", inputHTML("budget", c.budget || "", { type: "number", attrs: ' min="0" step="100"', placeholder: "如：5000" })),
+    onSubmit: function (data) {
+      c.budget = Number(data.budget) || 0;
+      saveDB(); renderApp(); toast(c.budget ? "预算已保存" : "已清除预算");
+    }
+  });
 }
 
 function bindCompDetail(view, c) {
@@ -207,7 +333,16 @@ function bindCompDetail(view, c) {
     saveDB(); toast(c.trackFinal ? "已跟踪决赛时间，同步到教学日历" : "已取消跟踪决赛时间"); renderApp();
   });
 
-  $("#team-add", view).addEventListener("click", function () { teamForm(c, null); });
+  /* 页签切换 */
+  $$("[data-comp-tab]", view).forEach(function (el) {
+    el.addEventListener("click", function () {
+      compTab = el.getAttribute("data-comp-tab");
+      renderApp();
+    });
+  });
+
+  const teamAdd = $("#team-add", view);
+  teamAdd && teamAdd.addEventListener("click", function () { teamForm(c, null); });
   $$("[data-team-edit]", view).forEach(function (el) { el.addEventListener("click", function () { teamForm(c, DB.teams.find(function (t) { return t.id === el.getAttribute("data-team-edit"); })); }); });
   $$("[data-team-del]", view).forEach(function (el) {
     el.addEventListener("click", function () {
@@ -218,7 +353,8 @@ function bindCompDetail(view, c) {
     });
   });
 
-  $("#result-add", view).addEventListener("click", function () { resultForm(c, null); });
+  const resultAdd = $("#result-add", view);
+  resultAdd && resultAdd.addEventListener("click", function () { resultForm(c, null); });
   $$("[data-result-del]", view).forEach(function (el) {
     el.addEventListener("click", function () {
       confirmModal("确定删除该获奖记录？", function () {
@@ -227,6 +363,15 @@ function bindCompDetail(view, c) {
       });
     });
   });
+
+  /* 经费与票据：上传 / 预览 / 编辑 / 删除（与差旅同一套） */
+  bindReceiptOps(view, c, COMP_RECEIPT_OPTS);
+
+  $$("#comp-budget, #comp-budget-2", view).forEach(function (el) {
+    el.addEventListener("click", function () { compBudgetForm(c); });
+  });
+  const reimBtn = $("#comp-reim", view);
+  reimBtn && reimBtn.addEventListener("click", function () { createReimbursement(c, "competition"); });
 }
 
 function teamForm(comp, team) {

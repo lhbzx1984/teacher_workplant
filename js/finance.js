@@ -1,5 +1,18 @@
 "use strict";
 
+/* 待生成报销单的来源：差旅项目 + 竞赛项目（两者都能产生报销） */
+function pendingSourceCount() {
+  const used = function (type, id) {
+    return (DB.reimbursements || []).some(function (r) {
+      return (r.sourceType || (r.tripId ? "trip" : "")) === type && (r.sourceId || r.tripId) === id;
+    });
+  };
+  let n = 0;
+  (DB.trips || []).forEach(function (t) { if (!used("trip", t.id)) n++; });
+  (DB.competitions || []).forEach(function (c) { if (!used("competition", c.id)) n++; });
+  return n;
+}
+
 function renderFinance(view) {
   const statusFilter = window.__reimStatus || "";
   const all = DB.reimbursements || [];
@@ -9,15 +22,13 @@ function renderFinance(view) {
   const total = sum(all, function (r) { return r.amount; });
   const doneSum = sum(all.filter(function (r) { return r.status === "已报销"; }), function (r) { return r.amount; });
   const pendingSum = sum(all.filter(function (r) { return r.status === "待提交" || r.status === "审批中"; }), function (r) { return r.amount; });
-  const tripCount = (DB.trips || []).filter(function (t) {
-    return !all.some(function (r) { return r.tripId === t.id; });
-  }).length;
+  const pendingSrc = pendingSourceCount();
 
-  let h = '<div class="page-head"><div class="page-title">财务报销<small>差旅票据与补助汇总 · 报销单状态跟踪</small></div>' +
-    '<div class="toolbar"><button class="btn" id="reim-add">从差旅生成报销单</button></div></div>';
+  let h = '<div class="page-head"><div class="page-title">财务报销<small>差旅与竞赛票据汇总 · 报销单状态跟踪</small></div>' +
+    '<div class="toolbar"><button class="btn" id="reim-add">生成报销单</button></div></div>';
 
   h += '<div class="grid grid-4" style="margin-bottom:14px">' +
-    statCard("报销单", all.length, "张", tripCount ? tripCount + " 个差旅待生成" : "全部差旅已生成") +
+    statCard("报销单", all.length, "张", pendingSrc ? pendingSrc + " 个项目待生成" : "全部项目已生成") +
     statCard("报销总额", fmtMoney(total), "", "全部报销单合计") +
     statCard("已报销", fmtMoney(doneSum), "", "已到账 / 已办结") +
     statCard("在途金额", fmtMoney(pendingSum), "", "待提交 + 审批中") +
@@ -29,15 +40,15 @@ function renderFinance(view) {
     "</select></div>";
 
   if (!list.length) {
-    h += '<div class="empty">' + (all.length ? "没有该状态的报销单" : "还没有报销单——到「差旅项目」中点击「生成报销单」，或点击右上角按钮") + "</div>";
+    h += '<div class="empty">' + (all.length ? "没有该状态的报销单" : "还没有报销单——到「差旅项目」或「学科竞赛 → 经费与票据」中点击「生成报销单」，或点击右上角按钮") + "</div>";
   } else {
-    h += '<table class="tbl"><thead><tr><th>单号</th><th>报销事项</th><th>关联差旅</th><th>申请人</th><th>申请日期</th>' +
+    h += '<table class="tbl"><thead><tr><th>单号</th><th>报销事项</th><th>关联项目</th><th>申请人</th><th>申请日期</th>' +
       "<th>金额</th><th>状态</th><th style=\"width:150px\">操作</th></tr></thead><tbody>";
     list.forEach(function (r) {
-      const trip = r.tripId ? getTrip(r.tripId) : null;
+      const src = reimSourceOf(r);
       h += "<tr><td>" + esc(r.no || "-") + "</td><td><b>" + esc(r.title || "-") + "</b>" +
         (r.note ? '<div class="muted">' + esc(r.note.slice(0, 22)) + (r.note.length > 22 ? "…" : "") + "</div>" : "") + "</td>" +
-        "<td>" + (trip ? '<span class="link" data-go="trip/' + trip.id + '">' + esc(trip.name.slice(0, 16)) + (trip.name.length > 16 ? "…" : "") + "</span>" : '<span class="muted">已删除的差旅</span>') + "</td>" +
+        "<td>" + reimSourceCellHTML(src) + "</td>" +
         "<td>" + esc(r.applicant || "-") + "</td><td>" + esc(r.applyDate || "-") + "</td>" +
         "<td><b>" + fmtMoney(r.amount) + "</b>" + (r.items && r.items.length ? '<div class="muted">' + r.items.length + " 项明细</div>" : "") + "</td>" +
         "<td>" + badge(r.status, reimStatusColor(r.status)) + "</td>" +
@@ -54,9 +65,19 @@ function renderFinance(view) {
   bindFinance(view);
 }
 
+/* 「关联项目」单元格：差旅 / 竞赛 / 手工录入三态，有来源时可点击跳转 */
+function reimSourceCellHTML(src) {
+  if (!src || !src.type) return '<span class="muted">手工录入</span>';
+  const short = src.name.length > 16 ? src.name.slice(0, 16) + "…" : src.name;
+  const color = src.type === "competition" ? "purple" : "blue";
+  return badge(src.label, color) + " " +
+    (src.go ? '<span class="link" data-go="' + src.go + '">' + esc(short) + "</span>"
+      : '<span class="muted">' + esc(short || "已删除") + "</span>");
+}
+
 function bindFinance(view) {
   const add = $("#reim-add", view);
-  add && add.addEventListener("click", reimFromTripForm);
+  add && add.addEventListener("click", reimSourceForm);
 
   const sel = $("#reim-status-filter", view);
   sel && sel.addEventListener("change", function () { window.__reimStatus = sel.value; renderApp(); });
@@ -106,7 +127,7 @@ function reimItemsTableHTML(r) {
 
 /* 只读明细弹窗 */
 function viewReimbursement(r) {
-  const trip = r.tripId ? getTrip(r.tripId) : null;
+  const src = reimSourceOf(r);
   openModal({
     title: "报销明细 · " + (r.no || r.title),
     wide: true,
@@ -116,7 +137,8 @@ function viewReimbursement(r) {
       "<span>报销事项：" + esc(r.title || "-") + "</span>" +
       "<span>申请人：" + esc(r.applicant || "-") + "</span>" +
       "<span>申请日期：" + esc(r.applyDate || "-") + "</span>" +
-      (trip ? '<span class="link" data-go="trip/' + trip.id + '">查看差旅项目</span>' : "") +
+      (src.go ? badge(src.label, src.type === "competition" ? "purple" : "blue") +
+        '<span class="link" data-go="' + src.go + '">查看来源项目</span>' : "") +
       "</div>" +
       reimItemsTableHTML(r) +
       (r.note ? '<div class="hint" style="margin-top:10px">备注：' + esc(r.note) + "</div>" : ""),
@@ -213,8 +235,16 @@ function buildFundRequestSheet(f) {
 
 /* 导出前先给用户核对一次：收款信息等模板里没有的字段需要补填 */
 function exportFundRequestForm(r) {
-  const trip = r.tripId ? getTrip(r.tripId) : null;
+  const src = reimSourceOf(r);
+  const so = src.obj;
   const st = DB.settings || {};
+  /* 事由与项目名称按来源拼：差旅写「项目名 · 事由」，竞赛写「赛事名（级别竞赛经费）」 */
+  const reasonDefault = so
+    ? (src.type === "trip" ? so.name + (so.reason ? " · " + so.reason : "") : so.name + "竞赛经费（器件耗材与参赛差旅）")
+    : (r.title || "");
+  const projectDefault = so
+    ? (src.type === "trip" ? so.name + "（" + so.type + "）" : so.name + "（" + (so.level || "学科") + "竞赛）")
+    : (r.title || "");
   formModal({
     title: "\u5bfc\u51fa\u8d44\u91d1\u7533\u8bf7\u5355 \u00b7 " + (r.no || r.title),
     wide: true,
@@ -227,12 +257,10 @@ function exportFundRequestForm(r) {
       fieldHTML("\u90e8\u95e8", inputHTML("dept", st.dept || st.school || "", { placeholder: "\u5982\uff1a\u6570\u667a\u4f20\u5a92\u4e0e\u8bbe\u8ba1\u827a\u672f\u5b66\u9662" })) +
       fieldHTML("\u7c7b\u522b", selectHTML("category", "\u62a5\u9500", ["\u62a5\u9500", "\u501f\u6b3e"])) +
       "</div>" +
-      fieldHTML("\u652f\u4ed8\u4e8b\u7531", textareaHTML("reason",
-        trip ? trip.name + (trip.reason ? " · " + trip.reason : "") : (r.title || ""),
-        { rows: 2, placeholder: "\u5982\uff1a\u8d75\u67d0\u5e02\u57f9\u8bad\u5dee\u65c5\u8d39" })) +
+      fieldHTML("\u652f\u4ed8\u4e8b\u7531", textareaHTML("reason", reasonDefault,
+        { rows: 2, placeholder: "\u5982\uff1a\u8d75\u67d0\u5e02\u57f9\u8bad\u5dee\u65c5\u8d39 / \u7ade\u8d5b\u5668\u4ef6\u8017\u6750\u91c7\u8d2d" })) +
       fieldHTML("\u652f\u4ed8\u65b9\u5f0f", selectHTML("method", st.payMethod || "\u7535\u6c47", ["\u73b0\u91d1", "\u652f\u7968", "\u7535\u6c47", "\u5176\u4ed6"])) +
-      fieldHTML("\u5408\u540c(\u9879\u76ee)\u7f16\u53f7\u53ca\u540d\u79f0", inputHTML("project",
-        trip ? trip.name + "\uff08" + trip.type + "\uff09" : (r.title || ""), { placeholder: "\u53ef\u7559\u7a7a" })) +
+      fieldHTML("\u5408\u540c(\u9879\u76ee)\u7f16\u53f7\u53ca\u540d\u79f0", inputHTML("project", projectDefault, { placeholder: "\u53ef\u7559\u7a7a" })) +
       '<div class="form-row">' +
       fieldHTML("\u6536\u6b3e\u5355\u4f4d\u540d\u79f0", inputHTML("payeeName", st.payeeName || "", { placeholder: "\u5982\uff1a\u5929\u6d25\u4ec1\u7231\u5b66\u9662" })) +
       fieldHTML("\u5f00\u6237\u94f6\u884c", inputHTML("payeeBank", st.payeeBank || "", { placeholder: "\u53ef\u7559\u7a7a" })) +
@@ -298,24 +326,129 @@ function reimForm(r) {
   });
 }
 
-/* 从差旅项目生成报销单：已生成过的会提示重新生成 */
-function reimFromTripForm() {
-  if (!(DB.trips || []).length) {
-    toast("请先在「差旅项目」中创建差旅项目");
+/* ===================== 生成报销单（差旅 / 竞赛通用） ===================== */
+
+/* 报销明细 = 逐张可报销票据（+ 差旅的两项补助；竞赛无补助） */
+function fillReimbursement(r, source, sourceType) {
+  const items = [];
+  (source.receipts || []).forEach(function (x) {
+    if (RECEIPT_BILLABLE.indexOf(x.kind) < 0) return;
+    items.push({ name: x.kind + (x.note ? "（" + x.note + "）" : ""), amount: Number(x.amount) || 0, kind: "票据" });
+  });
+  if (sourceType === "trip") {
+    const days = tripDays(source), people = tripPeople(source);
+    const tp = tripTransportAllowance(source), ml = tripMealAllowance(source);
+    if (tp) items.push({ name: "市内交通补助（" + days + " 天 × " + people + " 人 × " + fmtMoney(tripStd(source).transport) + "）", amount: tp, kind: "补助" });
+    if (ml) items.push({ name: "餐费补助（" + days + " 天 × " + people + " 人 × " + fmtMoney(tripStd(source).meal) + "）", amount: ml, kind: "补助" });
+  }
+  r.items = items;
+  r.amount = sum(items, function (it) { return it.amount; });
+  r.title = source.name;
+  r.applyDate = r.applyDate || todayISO();
+}
+
+/* 为一个来源（差旅项目 / 竞赛项目）生成或刷新报销单 */
+function createReimbursement(source, sourceType) {
+  if (!source) return;
+  const type = sourceType || "trip";
+  const existing = (DB.reimbursements || []).find(function (r) {
+    return (r.sourceType || (r.tripId ? "trip" : "")) === type && (r.sourceId || r.tripId) === source.id;
+  });
+  const label = type === "trip" ? "差旅项目" : "竞赛项目";
+  if (existing) {
+    confirmModal("该" + label + "已生成报销单（" + esc(existing.no) + "），是否重新生成？<br><span class='muted'>重新生成将覆盖原有明细与金额。</span>", function () {
+      fillReimbursement(existing, source, type);
+      existing.sourceType = type;
+      existing.sourceId = source.id;
+      saveDB(); renderApp(); toast("报销单已更新");
+      go("finance");
+    });
     return;
   }
-  formModal({
-    title: "从差旅生成报销单",
+  const r = {
+    id: uid(),
+    no: "BX" + todayISO().replace(/-/g, "") + "-" + ((DB.reimbursements || []).length + 1),
+    sourceType: type,
+    sourceId: source.id,
+    tripId: type === "trip" ? source.id : "",
+    title: source.name,
+    applicant: (DB.settings && DB.settings.teacherName) || "",
+    applyDate: todayISO(),
+    status: "待提交",
+    items: [],
+    amount: 0,
+    note: ""
+  };
+  fillReimbursement(r, source, type);
+  DB.reimbursements.push(r);
+  saveDB(); renderApp();
+  toast("报销单已生成：" + r.no);
+  go("finance");
+}
+
+/* 来源清单：按类型取可选项目，附可报销金额与「已生成」标记 */
+function reimSourceOptions(type) {
+  if (type === "competition") {
+    return (DB.competitions || []).map(function (c) {
+      const has = (DB.reimbursements || []).some(function (r) {
+        return (r.sourceType || (r.tripId ? "trip" : "")) === "competition" && (r.sourceId || r.tripId) === c.id;
+      });
+      return { value: c.id, text: c.name + "（" + (c.level || "竞赛") + " · " + fmtMoney(compReceiptTotal(c)) + (has ? " · 已生成" : "") + "）" };
+    });
+  }
+  return (DB.trips || []).map(function (t) {
+    const has = (DB.reimbursements || []).some(function (r) {
+      return (r.sourceType || (r.tripId ? "trip" : "")) === "trip" && (r.sourceId || r.tripId) === t.id;
+    });
+    return { value: t.id, text: t.name + "（" + t.type + " · " + fmtMoney(tripTotal(t)) + (has ? " · 已生成" : "") + "）" };
+  });
+}
+
+/* 生成报销单：先选来源类型，再选具体项目（两级联动） */
+function reimSourceForm() {
+  const hasTrip = (DB.trips || []).length > 0;
+  const hasComp = (DB.competitions || []).length > 0;
+  if (!hasTrip && !hasComp) {
+    toast("请先在「差旅项目」或「学科竞赛」中创建项目");
+    return;
+  }
+  const typeOpts = [];
+  if (hasTrip) typeOpts.push({ value: "trip", text: "差旅项目（票据 + 补助）" });
+  if (hasComp) typeOpts.push({ value: "competition", text: "学科竞赛（器件耗材 + 参赛差旅）" });
+
+  const overlay = formModal({
+    title: "生成报销单",
     body:
-      '<div class="hint" style="margin-bottom:10px">选择差旅项目后，将自动汇总其票据金额与市内交通 / 餐费补助生成报销明细。</div>' +
-      fieldHTML("差旅项目", selectHTML("tripId", "", (DB.trips || []).map(function (t) {
-        const has = DB.reimbursements.some(function (r) { return r.tripId === t.id; });
-        return { value: t.id, text: t.name + "（" + t.type + " · " + fmtMoney(tripTotal(t)) + (has ? " · 已生成" : "") + "）" };
-      }))),
+      '<div class="hint" style="margin-bottom:10px">差旅项目汇总票据金额与市内交通 / 餐费补助；' +
+      "竞赛项目汇总器件耗材、资料图书、软件服务与参赛差旅票据（不含补助）。</div>" +
+      '<div class="form-row">' +
+      fieldHTML("来源类型", selectHTML("srcType", hasTrip ? "trip" : "competition", typeOpts)) +
+      fieldHTML("项目", '<select class="input" name="srcId"></select>') +
+      "</div>" +
+      '<div class="hint" id="reim-src-tip"></div>',
     onSubmit: function (data) {
-      const trip = getTrip(data.tripId);
-      if (!trip) { toast("请选择差旅项目"); return false; }
-      createReimbursement(trip);
+      const type = data.srcType;
+      const obj = type === "competition" ? getCompetition(data.srcId) : getTrip(data.srcId);
+      if (!obj) { toast("请选择项目"); return false; }
+      createReimbursement(obj, type);
     }
   });
+
+  const typeSel = $("select[name='srcType']", overlay);
+  const idSel = $("select[name='srcId']", overlay);
+  const tip = $("#reim-src-tip", overlay);
+  const refresh = function () {
+    const type = typeSel.value;
+    const opts = reimSourceOptions(type);
+    idSel.innerHTML = opts.length
+      ? opts.map(function (o) { return '<option value="' + esc(o.value) + '">' + esc(o.text) + "</option>"; }).join("")
+      : '<option value="">暂无项目</option>';
+    if (tip) {
+      tip.innerHTML = type === "competition"
+        ? "竞赛按<b>票据实报实销</b>：先在竞赛详情「经费与票据」上传器件耗材等发票，再生成报销单。"
+        : "差旅按<b>票据 + 补助</b>汇总：补助为「人数 × 天数 × 标准」。";
+    }
+  };
+  typeSel.addEventListener("change", refresh);
+  refresh();
 }

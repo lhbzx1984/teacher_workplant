@@ -324,6 +324,8 @@ textarea.input { resize: vertical; min-height: 64px; line-height: 1.55; }
 .hbar-label { flex: 0 0 84px; color: var(--ink-2); text-align: right; }
 .hbar-track { flex: 1; height: 16px; background: var(--bar-bg); border-radius: 4px; overflow: hidden; }
 .hbar-fill { height: 100%; background: var(--primary); display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; color: var(--on-primary); font-size: 11px; border-radius: 4px; min-width: 24px; font-variant-numeric: tabular-nums; }
+/* 预算超支：进度条转红 */
+.hbar-fill.hbar-fill-danger { background: var(--red-600); }
 
 /* ===================== 时间轴 ===================== */
 .timeline { position: relative; padding-left: 22px; }
